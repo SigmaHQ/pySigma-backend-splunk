@@ -67,13 +67,13 @@ class SplunkBackend(TextQueryBackend):
     def convert_condition_field_eq_val_re(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
         if cond.parent_condition_chain_contains(ConditionOR):
-            raise SigmaFeatureNotSupportedByBackendError("ORing regular expressions is not yet supported by Splunk backend")
+            raise SigmaFeatureNotSupportedByBackendError("ORing regular expressions is not yet supported by Splunk backend", source=cond.source)
         return SplunkDeferredRegularExpression(state, cond.field, super().convert_condition_field_eq_val_re(cond, state)).postprocess(None, cond)
 
     def convert_condition_field_eq_val_cidr(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredCIDRExpression:
         """Defer CIDR network range matching to pipelined where cidrmatch command after main search expression."""
         if cond.parent_condition_chain_contains(ConditionOR):
-            raise SigmaFeatureNotSupportedByBackendError("ORing CIDR matching is not yet supported by Splunk backend")
+            raise SigmaFeatureNotSupportedByBackendError("ORing CIDR matching is not yet supported by Splunk backend", source=cond.source)
         return SplunkDeferredCIDRExpression(state, cond.field, super().convert_condition_field_eq_val_cidr(cond, state)).postprocess(None, cond)
 
     def finalize_query_savedsearches(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
