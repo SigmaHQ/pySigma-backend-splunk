@@ -36,6 +36,7 @@ class SplunkBackend(TextQueryBackend):
     escape_char : ClassVar[str] = "\\"
     wildcard_multi : ClassVar[str] = "*"
     wildcard_single : ClassVar[str] = "*"
+    add_escaped : ClassVar[str] = "\\"
 
     re_expression : ClassVar[str] = "{regex}"
     re_escape_char : ClassVar[str] = "\\"
