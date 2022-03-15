@@ -6,6 +6,11 @@
 
 This is the Splunk backend for pySigma. It provides the package `sigma.backends.splunk` with the `SplunkBackend` class.
 
+It supports the following output formats:
+
+* default: plain Splunk queries
+* savedsearches: Splunk savedsearches.conf format.
+
 This backend is currently maintained by:
 
 * [Thomas Patzke](https://github.com/thomaspatzke/)
