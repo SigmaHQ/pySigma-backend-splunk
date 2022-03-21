@@ -5,6 +5,10 @@
 # pySigma Splunk Backend
 
 This is the Splunk backend for pySigma. It provides the package `sigma.backends.splunk` with the `SplunkBackend` class.
+Further, it contains the following processing pipelines in `sigma.pipelines.splunk`:
+
+* splunk_windows_pipeline: Splunk Windows log support
+* splunk_windows_sysmon_acceleration_keywords: Adds fiels name keyword search terms to generated query to accelerate search.
 
 It supports the following output formats:
 

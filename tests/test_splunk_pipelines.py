@@ -1,7 +1,7 @@
 import pytest
 from sigma.collection import SigmaCollection
 from sigma.backends.splunk import SplunkBackend
-from sigma.pipelines.splunk import splunk_windows_pipeline, splunk_windows_sysmon_acceleration_keywords_pipeline
+from sigma.pipelines.splunk import splunk_windows_pipeline, splunk_windows_sysmon_acceleration_keywords
 from sigma.pipelines.splunk.splunk import windows_service_source_mapping
 from sigma.pipelines.sysmon import sysmon_pipeline
 
@@ -26,7 +26,7 @@ def test_splunk_windows_pipeline_simple(service, source):
     ) == [f"source=\"{source}\" EventCode=123 field=\"value\""]
 
 def test_splunk_sysmon_process_creation_keyword_acceleration():
-    assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords_pipeline()).convert(
+    assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -42,7 +42,7 @@ def test_splunk_sysmon_process_creation_keyword_acceleration():
     ) == ['"ParentProcessGuid" source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=1 field="value"']
 
 def test_splunk_sysmon_file_creation_keyword_acceleration():
-    assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords_pipeline()).convert(
+    assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test

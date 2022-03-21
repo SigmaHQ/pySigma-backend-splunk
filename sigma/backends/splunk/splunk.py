@@ -57,8 +57,8 @@ class SplunkBackend(TextQueryBackend):
     field_in_list_expression : ClassVar[str] = "{field} IN ({list})"
     list_separator : ClassVar[str] = ", "
 
-    unbound_value_str_expression : ClassVar[str] = '"*{value}*"'
-    unbound_value_num_expression : ClassVar[str] = '*{value}*'
+    unbound_value_str_expression : ClassVar[str] = '"{value}"'
+    unbound_value_num_expression : ClassVar[str] = '{value}'
     unbound_value_re_expression : ClassVar[str] = '{value}'
 
     deferred_start : ClassVar[str] = "\n| "
