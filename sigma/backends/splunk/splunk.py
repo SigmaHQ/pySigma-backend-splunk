@@ -5,7 +5,8 @@ from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionOR
 from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
-from typing import ClassVar, Dict, List, Tuple
+import sigma
+from typing import ClassVar, Dict, List, Optional, Tuple
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     template = 'regex {field}{op}"{value}"'
@@ -65,6 +66,11 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator : ClassVar[str] = "\n| "
     deferred_only_query : ClassVar[str] = "*"
 
+    def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", **kwargs):
+        super().__init__(processing_pipeline, collect_errors, **kwargs)
+        self.min_time = min_time
+        self.max_time = max_time
+
     def convert_condition_field_eq_val_re(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
         if cond.parent_condition_chain_contains(ConditionOR):
@@ -85,8 +91,8 @@ class SplunkBackend(TextQueryBackend):
 search = {escaped_query}"""
 
     def finalize_output_savedsearches(self, queries: List[str]) -> str:
-        return """
+        return f"""
 [default]
-dispatch.earliest_time = -30d
-dispatch.latest_time = now
+dispatch.earliest_time = {self.min_time}
+dispatch.latest_time = {self.max_time}
 """ + "\n".join(queries)
