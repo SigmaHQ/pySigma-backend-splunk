@@ -68,8 +68,8 @@ class SplunkBackend(TextQueryBackend):
 
     def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", **kwargs):
         super().__init__(processing_pipeline, collect_errors, **kwargs)
-        self.min_time = min_time
-        self.max_time = max_time
+        self.min_time = min_time or "-30d"
+        self.max_time = max_time or "now"
 
     def convert_condition_field_eq_val_re(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
