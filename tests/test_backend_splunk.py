@@ -20,10 +20,10 @@ def test_splunk_in_expression(splunk_backend : SplunkBackend):
                     fieldA:
                         - valueA
                         - valueB
-                        - valueC
+                        - valueC*
                 condition: sel
         """)
-    ) == ['fieldA IN ("valueA", "valueB", "valueC")']
+    ) == ['fieldA IN ("valueA", "valueB", "valueC*")']
 
 def test_splunk_regex_query(splunk_backend : SplunkBackend):
     assert splunk_backend.convert(
