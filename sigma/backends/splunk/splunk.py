@@ -124,13 +124,13 @@ dispatch.latest_time = {self.max_time}
                     cim_fields = " ".join(splunk_sysmon_process_creation_dm_mapping.values())
 
         data_model_query = f"""
-| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where 
-{query} by {cim_fields} 
-| `drop_dm_object_name({data_set})` 
-| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime) 
-| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) 
+| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where
+{query} by {cim_fields}
+| `drop_dm_object_name({data_set})`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace("\n", "")
         return data_model_query
 
-    def finalize_output_data_model(self, queries: List[str]) -> str:
+    def finalize_output_data_model(self, queries: List[str]) -> List[str]:
         return queries
