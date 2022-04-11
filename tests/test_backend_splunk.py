@@ -8,6 +8,24 @@ from sigma.pipelines.splunk.splunk import splunk_data_model
 def splunk_backend():
     return SplunkBackend()
 
+def test_splunk_in_expression(splunk_backend : SplunkBackend):
+    assert splunk_backend.convert(
+        SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA:
+                        - valueA
+                        - valueB
+                        - valueC*
+                condition: sel
+        """)
+    ) == ['fieldA IN ("valueA", "valueB", "valueC*")']
+
 def test_splunk_regex_query(splunk_backend : SplunkBackend):
     assert splunk_backend.convert(
         SigmaCollection.from_yaml("""

@@ -56,7 +56,11 @@ class SplunkBackend(TextQueryBackend):
 
     field_null_expression : ClassVar[str] = "{field}!=*"
 
-    field_in_list_expression : ClassVar[str] = "{field} IN ({list})"
+    convert_or_as_in : ClassVar[bool] = True
+    convert_and_as_in : ClassVar[bool] = False
+    in_expressions_allow_wildcards : ClassVar[bool] = True
+    field_in_list_expression : ClassVar[str] = "{field} {op} ({list})"
+    or_in_operator : ClassVar[Optional[str]] = "IN"
     list_separator : ClassVar[str] = ", "
 
     unbound_value_str_expression : ClassVar[str] = '"{value}"'
