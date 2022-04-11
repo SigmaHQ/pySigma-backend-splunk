@@ -318,3 +318,24 @@ Filesystem.file_path="test" by Filesystem.dest Filesystem.file_create_time Files
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) 
 """.replace("\n", "")]
 
+def test_splunk_data_model_process_creation_linux():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""
+| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where 
+Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.parent_process 
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user 
+| `drop_dm_object_name(Processes)` 
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime) 
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) 
+""".replace("\n", "")]

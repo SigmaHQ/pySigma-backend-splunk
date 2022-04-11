@@ -84,7 +84,7 @@ def test_splunk_process_creation_dm():
     ) == [f"Processes.process=\"test\" Processes.process_current_directory=\"test\" Processes.process_path=\"test\" Processes.process_integrity_level=\"test\" Processes.parent_process=\"test\" Processes.parent_process_path=\"test\" Processes.parent_process_guid=\"test\" Processes.parent_process_id=\"test\" Processes.process_guid=\"test\" Processes.process_id=\"test\" Processes.user=\"test\""]
 
 def test_splunk_process_creation_dm_unsupported_fields():
-    with pytest.raises(SigmaTransformationError, match="The Splunk Data Model backend does only support field which can mapped to Splunk Common Information Model."):
+    with pytest.raises(SigmaTransformationError):
         SplunkBackend(processing_pipeline=splunk_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
@@ -200,7 +200,7 @@ Registry.registry_key_name=\"test\"
 """.replace("\n", "")]
 
 def test_splunk_registry_dm_unsupported_fields():
-    with pytest.raises(SigmaTransformationError, match="The Splunk Data Model backend does only support field which can mapped to Splunk Common Information Model."):
+    with pytest.raises(SigmaTransformationError):
         SplunkBackend(processing_pipeline=splunk_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
@@ -237,3 +237,35 @@ def test_splunk_file_event_dm():
 Filesystem.dest=\"test\" Filesystem.file_create_time=\"test\" Filesystem.process_path=\"test\" 
 Filesystem.process_guid=\"test\" Filesystem.process_id=\"test\" Filesystem.file_path=\"test\"
 """.replace("\n", "")]
+
+def test_splunk_file_event_dm_unsupported_fields():
+    with pytest.raises(SigmaTransformationError):
+        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+            SigmaCollection.from_yaml(f"""
+                title: Test
+                status: test
+                logsource:
+                    category: file_event
+                    product: windows
+                detection:
+                    sel:
+                        field: test
+                    condition: sel
+            """)
+        )
+
+def test_splunk_dm_unsupported_logsource():
+    with pytest.raises(SigmaTransformationError):
+        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+            SigmaCollection.from_yaml(f"""
+                title: Test
+                status: test
+                logsource:
+                    category: image_load
+                    product: windows
+                detection:
+                    sel:
+                        Image: test
+                    condition: sel
+            """)
+        )

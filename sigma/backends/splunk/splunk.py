@@ -5,7 +5,7 @@ from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionOR
 from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
-from sigma.pipelines.splunk.splunk import splunk_windows_process_creation_dm_mapping, splunk_windows_registry_dm_mapping, splunk_windows_file_event_dm_mapping
+from sigma.pipelines.splunk.splunk import splunk_sysmon_process_creation_dm_mapping, splunk_windows_registry_dm_mapping, splunk_windows_file_event_dm_mapping
 import sigma
 from typing import ClassVar, Dict, List, Optional, Tuple
 
@@ -108,7 +108,7 @@ dispatch.latest_time = {self.max_time}
                 if rule.logsource.category == "process_creation":
                     data_model = 'Endpoint'
                     data_set = 'Processes'
-                    cim_fields = " ".join(splunk_windows_process_creation_dm_mapping.values())
+                    cim_fields = " ".join(splunk_sysmon_process_creation_dm_mapping.values())
                 elif rule.logsource.category in ["registry_add", "registry_delete", "registry_event", "registry_set"]:
                     data_model = 'Endpoint'
                     data_set = 'Registry'
@@ -117,6 +117,11 @@ dispatch.latest_time = {self.max_time}
                     data_model = 'Endpoint'
                     data_set = 'Filesystem'
                     cim_fields = " ".join(splunk_windows_file_event_dm_mapping.values())
+            elif rule.logsource.product == "linux":
+                if rule.logsource.category == "process_creation":
+                    data_model = 'Endpoint'
+                    data_set = 'Processes'
+                    cim_fields = " ".join(splunk_sysmon_process_creation_dm_mapping.values())
 
         data_model_query = f"""
 | tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where 

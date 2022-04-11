@@ -1,6 +1,6 @@
 from sigma.pipelines.common import logsource_windows
-from sigma.processing.transformations import AddConditionTransformation, FieldMappingTransformation, DetectionItemFailureTransformation
-from sigma.processing.conditions import LogsourceCondition, IncludeFieldCondition, ExcludeFieldCondition
+from sigma.processing.transformations import AddConditionTransformation, FieldMappingTransformation, DetectionItemFailureTransformation, RuleFailureTransformation
+from sigma.processing.conditions import LogsourceCondition, IncludeFieldCondition, ExcludeFieldCondition, RuleProcessingItemAppliedCondition
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
 
 windows_service_source_mapping = {      # mapping between Sigma Windows log source services and Splunk source identifiers
@@ -31,7 +31,7 @@ windows_sysmon_acceleration_keywords = {    # Map Sysmon event sources and keywo
    "file_event": "TargetFilename",
 }
 
-splunk_windows_process_creation_dm_mapping = {
+splunk_sysmon_process_creation_dm_mapping = {
     "CommandLine": "Processes.process",
     "Computer": "Processes.dest",
     "CurrentDirectory": "Processes.process_current_directory",
@@ -65,13 +65,6 @@ splunk_windows_file_event_dm_mapping = {
     "TargetFilename": "Filesystem.file_path",
 }
 
-# registry rewrite EventType value
-
-# file_delete
-
-# dns
-
-# wmi
 
 def logsource_windows_process_creation():
     return LogsourceCondition(
@@ -107,6 +100,12 @@ def logsource_windows_file_event():
     return LogsourceCondition(
         category="file_event",
         product="windows",
+    )
+
+def logsource_linux_process_creation():
+    return LogsourceCondition(
+        category="process_creation",
+        product="linux",
     )
 
 def splunk_windows_pipeline():
@@ -158,25 +157,43 @@ def splunk_data_model():
         priority=20,
         items=[
             ProcessingItem(
-                identifier="splunk_dm_mapping_sysmon_process_creation",
-                transformation=FieldMappingTransformation(splunk_windows_process_creation_dm_mapping),
+                identifier="splunk_dm_mapping_sysmon_process_creation_unsupported_fields",
+                transformation=DetectionItemFailureTransformation("The Splunk Data Model Sigma backend supports only the following fields for process_creation log source: " + ",".join(splunk_sysmon_process_creation_dm_mapping.keys())),
                 rule_conditions=[
-                    logsource_windows_process_creation()
+                    logsource_windows_process_creation(),
+                    logsource_linux_process_creation(),
+                ],
+                rule_condition_linking=any,
+                detection_item_conditions=[
+                    ExcludeFieldCondition(
+                        fields = splunk_sysmon_process_creation_dm_mapping.keys()
+                    )
                 ]
             ),
             ProcessingItem(
-                identifier="splunk_dm_mapping_sysmon_process_creation_unsupported_fields",
-                transformation=DetectionItemFailureTransformation("The Splunk Data Model backend does only support field which can mapped to Splunk Common Information Model."),
+                identifier="splunk_dm_mapping_sysmon_process_creation",
+                transformation=FieldMappingTransformation(splunk_sysmon_process_creation_dm_mapping),
                 rule_conditions=[
-                    logsource_windows_process_creation()
+                    logsource_windows_process_creation(),
+                    logsource_linux_process_creation(),
                 ],
+                rule_condition_linking=any,
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_sysmon_registry_unsupported_fields",
+                transformation=DetectionItemFailureTransformation("The Splunk Data Model Sigma backend supports only the following fields for registry log source: " + ",".join(splunk_windows_registry_dm_mapping.keys())),
+                rule_conditions=[
+                    logsource_windows_registry_add(),
+                    logsource_windows_registry_delete(),
+                    logsource_windows_registry_event(),
+                    logsource_windows_registry_set(),
+                ],
+                rule_condition_linking=any,
                 detection_item_conditions=[
-                    IncludeFieldCondition(
-                        fields = [splunk_windows_process_creation_dm_mapping.values()]
+                    ExcludeFieldCondition(
+                        fields = splunk_windows_registry_dm_mapping.keys()
                     )
-                ],
-                detection_item_condition_linking=any,
-                detection_item_condition_negation=True,
+                ]
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_sysmon_registry",
@@ -190,20 +207,14 @@ def splunk_data_model():
                 rule_condition_linking=any,
             ),
             ProcessingItem(
-                identifier="splunk_dm_mapping_sysmon_registry_unsupported_fields",
-                transformation=DetectionItemFailureTransformation("The Splunk Data Model backend does only support field which can mapped to Splunk Common Information Model."),
+                identifier="splunk_dm_mapping_sysmon_file_event_unsupported_fields",
+                transformation=DetectionItemFailureTransformation("The Splunk Data Model Sigma backend supports only the following fields for file_event log source: " + ",".join(splunk_windows_file_event_dm_mapping.keys())),
                 rule_conditions=[
-                    logsource_windows_registry_add(),
-                    logsource_windows_registry_delete(),
-                    logsource_windows_registry_event(),
-                    logsource_windows_registry_set(),
+                    logsource_windows_file_event(),
                 ],
-                rule_condition_linking=any,
                 detection_item_conditions=[
-                    IncludeFieldCondition(
-                        fields = [
-                            "NewName",
-                        ]
+                    ExcludeFieldCondition(
+                        fields = splunk_windows_file_event_dm_mapping.keys()
                     )
                 ]
             ),
@@ -213,6 +224,17 @@ def splunk_data_model():
                 rule_conditions=[
                     logsource_windows_file_event(),
                 ]
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_log_source_not_supported",
+                rule_condition_linking=any,
+                transformation=RuleFailureTransformation("Rule type not yet supported by the Splunk Data Model Sigma backend!"),
+                rule_condition_negation=True,
+                rule_conditions=[
+                    RuleProcessingItemAppliedCondition("splunk_dm_mapping_sysmon_process_creation"),
+                    RuleProcessingItemAppliedCondition("splunk_dm_mapping_sysmon_registry"),
+                    RuleProcessingItemAppliedCondition("splunk_dm_mapping_sysmon_file_event"),
+                ],
             ),
         ]
     )
