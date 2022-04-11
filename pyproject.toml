@@ -15,10 +15,7 @@ pysigma = "^0.5.0"
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"
 pytest-cov = "^2.11.1"
-pytest-mypy = "^0.6.2"
-pylint = "^2.6.0"
-rope = "^0.18.0"
-pysigma-pipeline-sysmon = "^0.1.4"
+pysigma-pipeline-sysmon = "^0.1.5"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
