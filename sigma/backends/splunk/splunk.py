@@ -5,6 +5,7 @@ from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionOR
 from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
+from sigma.pipelines.splunk.splunk import splunk_sysmon_process_creation_dm_mapping, splunk_windows_registry_dm_mapping, splunk_windows_file_event_dm_mapping
 import sigma
 from typing import ClassVar, Dict, List, Optional, Tuple
 
@@ -100,3 +101,36 @@ search = {escaped_query}"""
 dispatch.earliest_time = {self.min_time}
 dispatch.latest_time = {self.max_time}
 """ + "\n".join(queries)
+
+    def finalize_query_data_model(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
+        if rule.logsource.product and rule.logsource.category:
+            if rule.logsource.product == "windows":
+                if rule.logsource.category == "process_creation":
+                    data_model = 'Endpoint'
+                    data_set = 'Processes'
+                    cim_fields = " ".join(splunk_sysmon_process_creation_dm_mapping.values())
+                elif rule.logsource.category in ["registry_add", "registry_delete", "registry_event", "registry_set"]:
+                    data_model = 'Endpoint'
+                    data_set = 'Registry'
+                    cim_fields = " ".join(splunk_windows_registry_dm_mapping.values())
+                elif rule.logsource.category == "file_event":
+                    data_model = 'Endpoint'
+                    data_set = 'Filesystem'
+                    cim_fields = " ".join(splunk_windows_file_event_dm_mapping.values())
+            elif rule.logsource.product == "linux":
+                if rule.logsource.category == "process_creation":
+                    data_model = 'Endpoint'
+                    data_set = 'Processes'
+                    cim_fields = " ".join(splunk_sysmon_process_creation_dm_mapping.values())
+
+        data_model_query = f"""
+| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where 
+{query} by {cim_fields} 
+| `drop_dm_object_name({data_set})` 
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime) 
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) 
+""".replace("\n", "")
+        return data_model_query
+
+    def finalize_output_data_model(self, queries: List[str]) -> str:
+        return queries
