@@ -153,7 +153,7 @@ def splunk_windows_sysmon_acceleration_keywords():
 
 def splunk_cim_data_model():
     return ProcessingPipeline(
-        name="Splunk Data Model Mapping for Sysmon Process Creation",
+        name="Splunk CIM Data Model Mapping",
         priority=20,
         items=[
             ProcessingItem(
