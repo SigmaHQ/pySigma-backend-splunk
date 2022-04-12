@@ -1,8 +1,8 @@
 import pytest
 from sigma.collection import SigmaCollection
 from sigma.backends.splunk import SplunkBackend
-from sigma.pipelines.splunk import splunk_windows_pipeline, splunk_windows_sysmon_acceleration_keywords
-from sigma.pipelines.splunk.splunk import windows_service_source_mapping, splunk_data_model
+from sigma.pipelines.splunk import splunk_windows_pipeline, splunk_windows_sysmon_acceleration_keywords, splunk_cim_data_model
+from sigma.pipelines.splunk.splunk import windows_service_source_mapping
 from sigma.pipelines.sysmon import sysmon_pipeline
 from sigma.exceptions import SigmaTransformationError
 
@@ -59,7 +59,7 @@ def test_splunk_sysmon_file_creation_keyword_acceleration():
     ) == ['"TargetFilename" source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=11 field="value"']
 
 def test_splunk_process_creation_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -85,7 +85,7 @@ def test_splunk_process_creation_dm():
 
 def test_splunk_process_creation_dm_unsupported_fields():
     with pytest.raises(SigmaTransformationError):
-        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+        SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
                 status: test
@@ -100,7 +100,7 @@ def test_splunk_process_creation_dm_unsupported_fields():
         )
 
 def test_splunk_registry_add_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -118,14 +118,12 @@ def test_splunk_registry_add_dm():
                     TargetObject: test
                 condition: sel
         """)
-    ) == [f"""
-Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\" 
-Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\" 
-Registry.registry_key_name=\"test\"
-""".replace("\n", "")]
+    ) == [f"""Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\"
+Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\"
+Registry.registry_key_name=\"test\"""".replace("\n", " ")]
 
 def test_splunk_registry_delete_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -143,14 +141,12 @@ def test_splunk_registry_delete_dm():
                     TargetObject: test
                 condition: sel
         """)
-    ) == [f"""
-Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\" 
-Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\" 
-Registry.registry_key_name=\"test\"
-""".replace("\n", "")]
+    ) == [f"""Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\"
+Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\"
+Registry.registry_key_name=\"test\"""".replace("\n", " ")]
 
 def test_splunk_registry_event_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -168,14 +164,12 @@ def test_splunk_registry_event_dm():
                     TargetObject: test
                 condition: sel
         """)
-    ) == [f"""
-Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\" 
-Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\" 
-Registry.registry_key_name=\"test\"
-""".replace("\n", "")]
+    ) == [f"""Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\"
+Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\"
+Registry.registry_key_name=\"test\"""".replace("\n", " ")]
 
 def test_splunk_registry_set_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -193,15 +187,13 @@ def test_splunk_registry_set_dm():
                     TargetObject: test
                 condition: sel
         """)
-    ) == [f"""
-Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\" 
-Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\" 
-Registry.registry_key_name=\"test\"
-""".replace("\n", "")]
+    ) == [f"""Registry.dest=\"test\" Registry.registry_value_data=\"test\" Registry.action=\"test\"
+Registry.process_path=\"test\" Registry.process_guid=\"test\" Registry.process_id=\"test\"
+Registry.registry_key_name=\"test\"""".replace("\n", " ")]
 
 def test_splunk_registry_dm_unsupported_fields():
     with pytest.raises(SigmaTransformationError):
-        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+        SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
                 status: test
@@ -216,7 +208,7 @@ def test_splunk_registry_dm_unsupported_fields():
         )
 
 def test_splunk_file_event_dm():
-    assert SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+    assert SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
         SigmaCollection.from_yaml(f"""
             title: Test
             status: test
@@ -233,14 +225,12 @@ def test_splunk_file_event_dm():
                     TargetFilename: test
                 condition: sel
         """)
-    ) == [f"""
-Filesystem.dest=\"test\" Filesystem.file_create_time=\"test\" Filesystem.process_path=\"test\" 
-Filesystem.process_guid=\"test\" Filesystem.process_id=\"test\" Filesystem.file_path=\"test\"
-""".replace("\n", "")]
+    ) == [f"""Filesystem.dest=\"test\" Filesystem.file_create_time=\"test\" Filesystem.process_path=\"test\"
+Filesystem.process_guid=\"test\" Filesystem.process_id=\"test\" Filesystem.file_path=\"test\"""".replace("\n", " ")]
 
 def test_splunk_file_event_dm_unsupported_fields():
     with pytest.raises(SigmaTransformationError):
-        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+        SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
                 status: test
@@ -256,7 +246,7 @@ def test_splunk_file_event_dm_unsupported_fields():
 
 def test_splunk_dm_unsupported_logsource():
     with pytest.raises(SigmaTransformationError):
-        SplunkBackend(processing_pipeline=splunk_data_model()).convert(
+        SplunkBackend(processing_pipeline=splunk_cim_data_model()).convert(
             SigmaCollection.from_yaml(f"""
                 title: Test
                 status: test
