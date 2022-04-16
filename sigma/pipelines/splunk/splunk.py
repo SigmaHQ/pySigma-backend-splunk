@@ -1,4 +1,12 @@
-from sigma.pipelines.common import logsource_windows
+from sigma.pipelines.common import \
+    logsource_windows, \
+    logsource_windows_process_creation, \
+    logsource_windows_registry_add, \
+    logsource_windows_registry_delete, \
+    logsource_windows_registry_event, \
+    logsource_windows_registry_set, \
+    logsource_windows_file_event, \
+    logsource_linux_process_creation
 from sigma.processing.transformations import AddConditionTransformation, FieldMappingTransformation, DetectionItemFailureTransformation, RuleFailureTransformation
 from sigma.processing.conditions import LogsourceCondition, IncludeFieldCondition, ExcludeFieldCondition, RuleProcessingItemAppliedCondition
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
@@ -64,49 +72,6 @@ splunk_windows_file_event_cim_mapping = {
     "ProcessId": "Filesystem.process_id",
     "TargetFilename": "Filesystem.file_path",
 }
-
-
-def logsource_windows_process_creation():
-    return LogsourceCondition(
-        category="process_creation",
-        product="windows",
-    )
-
-def logsource_windows_registry_add():
-    return LogsourceCondition(
-        category="registry_add",
-        product="windows",
-    )
-
-def logsource_windows_registry_delete():
-    return LogsourceCondition(
-        category="registry_delete",
-        product="windows",
-    )
-
-def logsource_windows_registry_event():
-    return LogsourceCondition(
-        category="registry_event",
-        product="windows",
-    )
-
-def logsource_windows_registry_set():
-    return LogsourceCondition(
-        category="registry_set",
-        product="windows",
-    )
-
-def logsource_windows_file_event():
-    return LogsourceCondition(
-        category="file_event",
-        product="windows",
-    )
-
-def logsource_linux_process_creation():
-    return LogsourceCondition(
-        category="process_creation",
-        product="linux",
-    )
 
 def splunk_windows_pipeline():
     return ProcessingPipeline(

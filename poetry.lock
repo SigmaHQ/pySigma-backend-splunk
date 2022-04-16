@@ -91,7 +91,7 @@ diagrams = ["railroad-diagrams", "jinja2"]
 
 [[package]]
 name = "pysigma"
-version = "0.5.0"
+version = "0.5.1"
 description = "Sigma rule processing and conversion tools"
 category = "main"
 optional = false
@@ -168,7 +168,7 @@ python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "e7241fe27e08f7ef00f55afe6b2493c6b2f806c47b4d4b3c8a4d9b6b120e6a62"
+content-hash = "bb2890431c0db62956ace604f27a27712a44038fa8640eb3ae1070a1f2ff3666"
 
 [metadata.files]
 atomicwrites = [
@@ -247,8 +247,8 @@ pyparsing = [
     {file = "pyparsing-3.0.8.tar.gz", hash = "sha256:7bf433498c016c4314268d95df76c81b842a4cb2b276fa3312cfb1e1d85f6954"},
 ]
 pysigma = [
-    {file = "pySigma-0.5.0-py3-none-any.whl", hash = "sha256:1311a83e3a8bc32791bac4faad9e0204636eb4874ee392918f7c0ab903bdc487"},
-    {file = "pySigma-0.5.0.tar.gz", hash = "sha256:b77e26fc32a05fbfa7d7e40b536d0be799fa642dc971e0e49b3b781f52e33ffc"},
+    {file = "pySigma-0.5.1-py3-none-any.whl", hash = "sha256:fd5728d00cc36a596a4a837137238e141044072da5b425544055dbe26c6fe002"},
+    {file = "pySigma-0.5.1.tar.gz", hash = "sha256:1b9cb385831b5a3b37207d16059cfa3c33c720130625c6b21cdf5929d61df698"},
 ]
 pysigma-pipeline-sysmon = [
     {file = "pysigma-pipeline-sysmon-0.1.5.tar.gz", hash = "sha256:ea5879f7ba7043965a9c00a67b23c536eb933f98b9c543f90dcff45a14bf0da3"},

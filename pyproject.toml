@@ -10,7 +10,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-pysigma = "^0.5.0"
+pysigma = "^0.5.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"
