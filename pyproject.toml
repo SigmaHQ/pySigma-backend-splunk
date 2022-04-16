@@ -4,6 +4,7 @@ version = "0.3.2"
 description = "pySigma Splunk backend"
 authors = ["Thomas Patzke <thomas@patzke.org>"]
 license = "LGPL-2.1-only"
+repository = "https://github.com/SigmaHQ/pySigma-backend-splunk"
 packages = [
     { include = "sigma" }
 ]
