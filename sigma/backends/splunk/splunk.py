@@ -126,15 +126,26 @@ dispatch.latest_time = {self.max_time}
                     data_set = 'Processes'
                     cim_fields = " ".join(splunk_sysmon_process_creation_cim_mapping.values())
 
-        if data_model is not None and data_set is not None and cim_fields is not None:
-            data_model_query = f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where {query} by {cim_fields}
+        try:
+            data_model_set = state.processing_state["data_model_set"]
+        except KeyError:
+            raise SigmaFeatureNotSupportedByBackendError("No data model specified by processing pipeline")
+
+        try:
+            data_set = data_model_set.split(".")[1]
+        except IndexError:
+            raise SigmaFeatureNotSupportedByBackendError("No data set specified by processing pipeline")
+
+        try:
+            fields = " ".join(state.processing_state["fields"])
+        except KeyError:
+            raise SigmaFeatureNotSupportedByBackendError("No fields specified by processing pipeline")
+
+        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {query} by {fields}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace("\n", " ")
-            return data_model_query
-        else:
-            raise SigmaFeatureNotSupportedByBackendError("No data model matches rule log source")
 
     def finalize_output_data_model(self, queries: List[str]) -> List[str]:
         return queries

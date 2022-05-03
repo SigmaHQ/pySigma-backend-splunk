@@ -333,7 +333,7 @@ Processes.parent_process_path Processes.parent_process_guid Processes.parent_pro
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace("\n", " ")]
 
-def test_splunk_data_model_no_matching_data_model():
+def test_splunk_data_model_no_data_model_specified():
     splunk_backend = SplunkBackend()
     rule = """
 title: Test
@@ -346,5 +346,5 @@ detection:
         CommandLine: test
     condition: sel
     """
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="data model matches"):
+    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="No data model specified"):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
