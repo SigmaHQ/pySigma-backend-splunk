@@ -134,7 +134,7 @@ dispatch.latest_time = {self.max_time}
             """.replace("\n", " ")
             return data_model_query
         else:
-            return ""
+            raise SigmaFeatureNotSupportedByBackendError("No data model matches rule log source")
 
     def finalize_output_data_model(self, queries: List[str]) -> List[str]:
         return queries
