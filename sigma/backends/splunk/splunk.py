@@ -103,6 +103,9 @@ dispatch.latest_time = {self.max_time}
 """ + "\n".join(queries)
 
     def finalize_query_data_model(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
+        data_model = None
+        data_set = None
+        cim_fields = None
         if rule.logsource.product and rule.logsource.category:
             if rule.logsource.product == "windows":
                 if rule.logsource.category == "process_creation":
@@ -123,12 +126,15 @@ dispatch.latest_time = {self.max_time}
                     data_set = 'Processes'
                     cim_fields = " ".join(splunk_sysmon_process_creation_cim_mapping.values())
 
-        data_model_query = f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where {query} by {cim_fields}
+        if data_model is not None and data_set is not None and cim_fields is not None:
+            data_model_query = f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model}.{data_set} where {query} by {cim_fields}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace("\n", " ")
-        return data_model_query
+            return data_model_query
+        else:
+            raise SigmaFeatureNotSupportedByBackendError("No data model matches rule log source")
 
     def finalize_output_data_model(self, queries: List[str]) -> List[str]:
         return queries
