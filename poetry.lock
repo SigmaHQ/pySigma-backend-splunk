@@ -91,7 +91,7 @@ diagrams = ["railroad-diagrams", "jinja2"]
 
 [[package]]
 name = "pysigma"
-version = "0.5.1"
+version = "0.6.0"
 description = "Sigma rule processing and conversion tools"
 category = "main"
 optional = false
@@ -103,14 +103,14 @@ pyyaml = ">=6.0,<7.0"
 
 [[package]]
 name = "pysigma-pipeline-sysmon"
-version = "0.1.5"
+version = "0.1.6"
 description = "pySigma Sysmon processing pipelines"
 category = "dev"
 optional = false
 python-versions = ">=3.8,<4.0"
 
 [package.dependencies]
-pysigma = ">=0.5.0,<0.6.0"
+pysigma = ">=0.6.0,<0.7.0"
 
 [[package]]
 name = "pytest"
@@ -168,7 +168,7 @@ python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "bb2890431c0db62956ace604f27a27712a44038fa8640eb3ae1070a1f2ff3666"
+content-hash = "3e450b27e63439c8b199898b4b1f41439bd7aa01d3c66ad299b10fad037c27e9"
 
 [metadata.files]
 atomicwrites = [
@@ -247,12 +247,12 @@ pyparsing = [
     {file = "pyparsing-3.0.8.tar.gz", hash = "sha256:7bf433498c016c4314268d95df76c81b842a4cb2b276fa3312cfb1e1d85f6954"},
 ]
 pysigma = [
-    {file = "pySigma-0.5.1-py3-none-any.whl", hash = "sha256:fd5728d00cc36a596a4a837137238e141044072da5b425544055dbe26c6fe002"},
-    {file = "pySigma-0.5.1.tar.gz", hash = "sha256:1b9cb385831b5a3b37207d16059cfa3c33c720130625c6b21cdf5929d61df698"},
+    {file = "pySigma-0.6.0-py3-none-any.whl", hash = "sha256:635b72707f8d012dec2b2b83e770c0c32247a445007d4145a55c89924559d2f0"},
+    {file = "pySigma-0.6.0.tar.gz", hash = "sha256:8a6aa07f376bd481e204113e7f3525945b0484e734c165a68415f0bf904e50cf"},
 ]
 pysigma-pipeline-sysmon = [
-    {file = "pysigma-pipeline-sysmon-0.1.5.tar.gz", hash = "sha256:ea5879f7ba7043965a9c00a67b23c536eb933f98b9c543f90dcff45a14bf0da3"},
-    {file = "pysigma_pipeline_sysmon-0.1.5-py3-none-any.whl", hash = "sha256:6acf0ee5b01addec1f4a619d49173b5ac8e8eec71ad2bfdf95093f3a2ea91e5b"},
+    {file = "pysigma-pipeline-sysmon-0.1.6.tar.gz", hash = "sha256:b9bb4b53c41145f3e271e1cf365fbd6f99548a676985e96bdfe367b94be03a46"},
+    {file = "pysigma_pipeline_sysmon-0.1.6-py3-none-any.whl", hash = "sha256:00b6c8a1cef9e73b041163d7fd216306011eea5c1c94165ff794cad968f39d20"},
 ]
 pytest = [
     {file = "pytest-6.2.5-py3-none-any.whl", hash = "sha256:7310f8d27bc79ced999e760ca304d69f6ba6c6649c0b60fb0e04a4a77cacc134"},
