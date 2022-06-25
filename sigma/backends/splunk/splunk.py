@@ -1,3 +1,4 @@
+import re
 from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule
 from sigma.conversion.base import TextQueryBackend
@@ -7,7 +8,7 @@ from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 from sigma.pipelines.splunk.splunk import splunk_sysmon_process_creation_cim_mapping, splunk_windows_registry_cim_mapping, splunk_windows_file_event_cim_mapping
 import sigma
-from typing import ClassVar, Dict, List, Optional, Tuple
+from typing import ClassVar, Dict, List, Optional, Pattern, Tuple
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     template = 'regex {field}{op}"{value}"'
@@ -33,6 +34,9 @@ class SplunkBackend(TextQueryBackend):
     and_token : ClassVar[str] = " "
     not_token : ClassVar[str] = "NOT"
     eq_token : ClassVar[str] = "="
+
+    field_quote: ClassVar[str] = "'"
+    field_quote_pattern: ClassVar[Pattern] = re.compile("^[\w.]+$")
 
     str_quote : ClassVar[str] = '"'
     escape_char : ClassVar[str] = "\\"

@@ -26,6 +26,21 @@ def test_splunk_in_expression(splunk_backend : SplunkBackend):
         """)
     ) == ['fieldA IN ("valueA", "valueB", "valueC*")']
 
+def test_splunk_field_name_with_whitespace(splunk_backend : SplunkBackend):
+    assert splunk_backend.convert(
+        SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    field name: valueA
+                condition: sel
+        """)
+    ) == ['\'field name\'="valueA"']
+
 def test_splunk_regex_query(splunk_backend : SplunkBackend):
     assert splunk_backend.convert(
         SigmaCollection.from_yaml("""
