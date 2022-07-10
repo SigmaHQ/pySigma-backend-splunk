@@ -6,33 +6,11 @@ from sigma.pipelines.common import \
     logsource_windows_registry_event, \
     logsource_windows_registry_set, \
     logsource_windows_file_event, \
-    logsource_linux_process_creation
+    logsource_linux_process_creation, \
+    windows_logsource_mapping
 from sigma.processing.transformations import AddConditionTransformation, FieldMappingTransformation, DetectionItemFailureTransformation, RuleFailureTransformation, SetStateTransformation
 from sigma.processing.conditions import LogsourceCondition, IncludeFieldCondition, ExcludeFieldCondition, RuleProcessingItemAppliedCondition
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
-
-windows_service_source_mapping = {      # mapping between Sigma Windows log source services and Splunk source identifiers
-    "security": "WinEventLog:Security",
-    "application": "WinEventLog:Application",
-    "system": "WinEventLog:System",
-    "sysmon": "WinEventLog:Microsoft-Windows-Sysmon/Operational",
-    "powershell": "WinEventLog:Microsoft-Windows-PowerShell/Operational",
-    "powershell-classic": "WinEventLog:Windows PowerShell",
-    "taskscheduler": "WinEventLog:Microsoft-Windows-TaskScheduler/Operational",
-    "wmi": "WinEventLog:Microsoft-Windows-WMI-Activity/Operational",
-    "dns-server": "WinEventLog:DNS Server",
-    "dns-server-audit": "WinEventLog:Microsoft-Windows-DNS-Server/Audit",
-    "driver-framework": "WinEventLog:Microsoft-Windows-DriverFrameworks-UserMode/Operational",
-    "ntlm": "WinEventLog:Microsoft-Windows-NTLM/Operational",
-    "dhcp": "WinEventLog:Microsoft-Windows-DHCP-Server/Operational",
-    "applocker": "WinEventLog:MSExchange Management",
-    "printservice-admin": "WinEventLog:Microsoft-Windows-PrintService/Admin",
-    "printservice-operational": "WinEventLog:Microsoft-Windows-PrintService/Operational",
-    "codeintegrity-operational": "WinEventLog:Microsoft-Windows-CodeIntegrity/Operational",
-    "smbclient-security": "WinEventLog:Microsoft-Windows-SmbClient/Security",
-    "firewall-as": "WinEventLog:Microsoft-Windows-Windows Firewall With Advanced Security/Firewall",
-    "bits-client": "WinEventLog:Microsoft-Windows-Bits-Client/Operational",
-}
 
 windows_sysmon_acceleration_keywords = {    # Map Sysmon event sources and keywords that are added to search for Sysmon optimization pipeline
    "process_creation": "ParentProcessGuid",
@@ -80,10 +58,10 @@ def splunk_windows_pipeline():
         items=[
             ProcessingItem(         # log sources mapped from windows_service_source_mapping
                 identifier=f"splunk_windows_{service}",
-                transformation=AddConditionTransformation({ "source": source}),
+                transformation=AddConditionTransformation({ "source": "WinEventLog:" + source}),
                 rule_conditions=[logsource_windows(service)],
             )
-            for service, source in windows_service_source_mapping.items()
+            for service, source in windows_logsource_mapping.items()
         ] + [
             ProcessingItem(     # Field mappings
                 identifier="splunk_windows_field_mapping",

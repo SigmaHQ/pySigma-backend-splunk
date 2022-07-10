@@ -2,13 +2,13 @@ import pytest
 from sigma.collection import SigmaCollection
 from sigma.backends.splunk import SplunkBackend
 from sigma.pipelines.splunk import splunk_windows_pipeline, splunk_windows_sysmon_acceleration_keywords, splunk_cim_data_model
-from sigma.pipelines.splunk.splunk import windows_service_source_mapping
+from sigma.pipelines.common import windows_logsource_mapping
 from sigma.pipelines.sysmon import sysmon_pipeline
 from sigma.exceptions import SigmaTransformationError
 
 @pytest.mark.parametrize(
     ("service", "source"),
-    windows_service_source_mapping.items()
+    windows_logsource_mapping.items()
 )
 def test_splunk_windows_pipeline_simple(service, source):
     assert SplunkBackend(processing_pipeline=splunk_windows_pipeline()).convert(
@@ -24,7 +24,7 @@ def test_splunk_windows_pipeline_simple(service, source):
                     field: value
                 condition: sel
         """)
-    ) == [f"source=\"{source}\" EventCode=123 field=\"value\""]
+    ) == [f"source=\"WinEventLog:{source}\" EventCode=123 field=\"value\""]
 
 def test_splunk_sysmon_process_creation_keyword_acceleration():
     assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords()).convert(

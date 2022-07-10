@@ -1,6 +1,6 @@
 [[package]]
 name = "atomicwrites"
-version = "1.4.0"
+version = "1.4.1"
 description = "Atomic file writes."
 category = "dev"
 optional = false
@@ -91,7 +91,7 @@ diagrams = ["railroad-diagrams", "jinja2"]
 
 [[package]]
 name = "pysigma"
-version = "0.6.3"
+version = "0.6.5"
 description = "Sigma rule processing and conversion tools"
 category = "main"
 optional = false
@@ -171,10 +171,7 @@ python-versions = "^3.8"
 content-hash = "3e450b27e63439c8b199898b4b1f41439bd7aa01d3c66ad299b10fad037c27e9"
 
 [metadata.files]
-atomicwrites = [
-    {file = "atomicwrites-1.4.0-py2.py3-none-any.whl", hash = "sha256:6d1784dea7c0c8d4a5172b6c620f40b6e4cbfdf96d783691f2e1302a7b88e197"},
-    {file = "atomicwrites-1.4.0.tar.gz", hash = "sha256:ae70396ad1a434f9c7046fd2dd196fc04b12f9e91ffb859164193be8b6168a7a"},
-]
+atomicwrites = []
 attrs = [
     {file = "attrs-21.4.0-py2.py3-none-any.whl", hash = "sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4"},
     {file = "attrs-21.4.0.tar.gz", hash = "sha256:626ba8234211db98e869df76230a137c4c40a12d72445c45d5f5b716f076e2fd"},
@@ -246,10 +243,7 @@ pyparsing = [
     {file = "pyparsing-3.0.9-py3-none-any.whl", hash = "sha256:5026bae9a10eeaefb61dab2f09052b9f4307d44aee4eda64b309723d8d206bbc"},
     {file = "pyparsing-3.0.9.tar.gz", hash = "sha256:2b020ecf7d21b687f219b71ecad3631f644a47f01403fa1d1036b0c6416d70fb"},
 ]
-pysigma = [
-    {file = "pySigma-0.6.3-py3-none-any.whl", hash = "sha256:42c47f945151cba9c59c1015eeed480a5553aee0b77c9baf3c0d71cec7b869cc"},
-    {file = "pySigma-0.6.3.tar.gz", hash = "sha256:7600b6f789af33dc1af1e7fc211c72a377b14894d095ed6f26622634c558d84e"},
-]
+pysigma = []
 pysigma-pipeline-sysmon = [
     {file = "pysigma-pipeline-sysmon-0.1.6.tar.gz", hash = "sha256:b9bb4b53c41145f3e271e1cf365fbd6f99548a676985e96bdfe367b94be03a46"},
     {file = "pysigma_pipeline_sysmon-0.1.6-py3-none-any.whl", hash = "sha256:00b6c8a1cef9e73b041163d7fd216306011eea5c1c94165ff794cad968f39d20"},
