@@ -35,7 +35,7 @@ class SplunkBackend(TextQueryBackend):
     not_token : ClassVar[str] = "NOT"
     eq_token : ClassVar[str] = "="
 
-    field_quote: ClassVar[str] = "'"
+    field_quote: ClassVar[str] = '"'
     field_quote_pattern: ClassVar[Pattern] = re.compile("^[\w.]+$")
 
     str_quote : ClassVar[str] = '"'
