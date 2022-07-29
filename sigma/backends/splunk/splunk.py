@@ -67,7 +67,7 @@ class SplunkBackend(TextQueryBackend):
     or_in_operator : ClassVar[Optional[str]] = "IN"
     list_separator : ClassVar[str] = ", "
 
-    unbound_value_str_expression : ClassVar[str] = '"{value}"'
+    unbound_value_str_expression : ClassVar[str] = '{value}'
     unbound_value_num_expression : ClassVar[str] = '{value}'
     unbound_value_re_expression : ClassVar[str] = '{value}'
 
