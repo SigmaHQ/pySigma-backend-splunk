@@ -8,6 +8,75 @@ from sigma.pipelines.splunk import splunk_cim_data_model
 def splunk_backend():
     return SplunkBackend()
 
+def test_splunk_and_expression(splunk_backend : SplunkBackend):
+    rule = SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                    fieldB: valueB
+                condition: sel
+        """)
+
+    assert splunk_backend.convert(rule) == ['fieldA="valueA" fieldB="valueB"']
+
+def test_splunk_or_expression(splunk_backend : SplunkBackend):
+    rule = SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel1:
+                    fieldA: valueA
+                sel2:
+                    fieldB: valueB
+                condition: 1 of sel*
+        """)
+    assert splunk_backend.convert(rule) == ['fieldA="valueA" OR fieldB="valueB"']
+
+def test_splunk_and_or_expression(splunk_backend : SplunkBackend):
+    rule = SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA:
+                        - valueA1
+                        - valueA2
+                    fieldB:
+                        - valueB1
+                        - valueB2
+                condition: sel
+        """)
+    assert splunk_backend.convert(rule) == ['fieldA IN ("valueA1", "valueA2") fieldB IN ("valueB1", "valueB2")']
+
+def test_splunk_or_and_expression(splunk_backend : SplunkBackend):
+    rule = SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel1:
+                    fieldA: valueA1
+                    fieldB: valueB1
+                sel2:
+                    fieldA: valueA2
+                    fieldB: valueB2
+                condition: 1 of sel*
+        """)
+    assert splunk_backend.convert(rule) == ['(fieldA="valueA1" fieldB="valueB1") OR (fieldA="valueA2" fieldB="valueB2")']
+
 def test_splunk_in_expression(splunk_backend : SplunkBackend):
     assert splunk_backend.convert(
         SigmaCollection.from_yaml("""

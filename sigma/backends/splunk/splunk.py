@@ -3,7 +3,7 @@ from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule
 from sigma.conversion.base import TextQueryBackend
 from sigma.conversion.deferred import DeferredTextQueryExpression
-from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionOR
+from sigma.conditions import ConditionFieldEqualsValueExpression, ConditionOR, ConditionAND, ConditionNOT, ConditionItem
 from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 from sigma.pipelines.splunk.splunk import splunk_sysmon_process_creation_cim_mapping, splunk_windows_registry_cim_mapping, splunk_windows_file_event_cim_mapping
@@ -28,6 +28,7 @@ class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
 
 class SplunkBackend(TextQueryBackend):
     """Splunk SPL backend."""
+    precedence: ClassVar[Tuple[ConditionItem, ConditionItem, ConditionItem]] = (ConditionNOT, ConditionOR, ConditionAND)
     group_expression : ClassVar[str] = "({expr})"
 
     or_token : ClassVar[str] = "OR"
