@@ -220,6 +220,9 @@ def test_splunk_cidr_or(splunk_backend : SplunkBackend):
 def test_splunk_savedsearch_output(splunk_backend : SplunkBackend):
     rules = """
 title: Test 1
+description: |
+  this is a description
+  across two lines
 status: test
 logsource:
     category: test_category
@@ -248,10 +251,13 @@ dispatch.earliest_time = -30d
 dispatch.latest_time = now
 
 [Test 1]
+description = this is a description\\
+across two lines
 search = fieldB="foo" fieldC="bar" \\
 | regex fieldA="foo.*bar"
 
 [Test 2]
+description = 
 search = fieldA="foo" fieldB="bar\""""
 
 def test_splunk_data_model_process_creation():
