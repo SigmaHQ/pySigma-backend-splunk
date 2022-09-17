@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pysigma-backend-splunk"
-version = "0.3.6"
+version = "0.3.7"
 description = "pySigma Splunk backend"
 authors = ["Thomas Patzke <thomas@patzke.org>"]
 license = "LGPL-2.1-only"
@@ -11,7 +11,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-pysigma = "^0.7.2"
+pysigma = "^0.8.1"
 pysigma-pipeline-sysmon = "^1.0.0"
 
 [tool.poetry.dev-dependencies]

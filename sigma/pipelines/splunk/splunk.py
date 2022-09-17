@@ -107,7 +107,7 @@ def splunk_cim_data_model():
                     logsource_linux_process_creation(),
                 ],
                 rule_condition_linking=any,
-                detection_item_conditions=[
+                field_name_conditions=[
                     ExcludeFieldCondition(
                         fields = splunk_sysmon_process_creation_cim_mapping.keys()
                     )
@@ -150,7 +150,7 @@ def splunk_cim_data_model():
                     logsource_windows_registry_set(),
                 ],
                 rule_condition_linking=any,
-                detection_item_conditions=[
+                field_name_conditions=[
                     ExcludeFieldCondition(
                         fields = splunk_windows_registry_cim_mapping.keys()
                     )
@@ -195,7 +195,7 @@ def splunk_cim_data_model():
                 rule_conditions=[
                     logsource_windows_file_event(),
                 ],
-                detection_item_conditions=[
+                field_name_conditions=[
                     ExcludeFieldCondition(
                         fields = splunk_windows_file_event_cim_mapping.keys()
                     )
