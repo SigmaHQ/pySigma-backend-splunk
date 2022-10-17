@@ -217,6 +217,23 @@ def test_splunk_cidr_or(splunk_backend : SplunkBackend):
             """)
         )
 
+def test_splunk_fields_output(splunk_backend : SplunkBackend):
+    rule = SigmaCollection.from_yaml("""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            fields:
+                - fieldA
+            detection:
+                sel:
+                    fieldA: valueA
+                condition: sel
+        """)
+
+    assert splunk_backend.convert(rule) == ['fieldA="valueA" | table fieldA']
+
 def test_splunk_savedsearch_output(splunk_backend : SplunkBackend):
     rules = """
 title: Test 1
