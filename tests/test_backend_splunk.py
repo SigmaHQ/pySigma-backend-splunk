@@ -227,6 +227,8 @@ status: test
 logsource:
     category: test_category
     product: test_product
+fields:
+    - fieldA
 detection:
     sel:
         fieldA|re: foo.*bar
@@ -239,6 +241,9 @@ status: test
 logsource:
     category: test_category
     product: test_product
+fields:
+    - fieldA
+    - fieldB
 detection:
     sel:
         fieldA: foo
@@ -254,11 +259,13 @@ dispatch.latest_time = now
 description = this is a description\\
 across two lines
 search = fieldB="foo" fieldC="bar" \\
-| regex fieldA="foo.*bar"
+| regex fieldA="foo.*bar" \\
+| table fieldA
 
 [Test 2]
 description = 
-search = fieldA="foo" fieldB="bar\""""
+search = fieldA="foo" fieldB="bar" \\
+| table fieldA,fieldB"""
 
 def test_splunk_data_model_process_creation():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
