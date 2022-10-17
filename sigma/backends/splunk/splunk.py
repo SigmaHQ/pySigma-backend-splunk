@@ -93,14 +93,19 @@ class SplunkBackend(TextQueryBackend):
             raise SigmaFeatureNotSupportedByBackendError("ORing CIDR matching is not yet supported by Splunk backend", source=cond.source)
         return SplunkDeferredCIDRExpression(state, cond.field, super().convert_condition_field_eq_val_cidr(cond, state)).postprocess(None, cond)
 
+    def finalize_query_default(self, rule : SigmaRule, query : str, index : int, state : ConversionState) -> str:
+        table_fields = (" | table " + ",".join(rule.fields)) if rule.fields else ""
+        return query + table_fields
+
     def finalize_query_savedsearches(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
         clean_title = rule.title.translate({ord(c): None for c in "[]"})      # remove brackets from title
         escaped_description = "\\\n".join(rule.description.strip().split("\n")) if rule.description else ""      # support multi-line descriptions
         escaped_query = " \\\n".join(query.split("\n"))      # escape line ends for multiline queries
+        table_fields = (" \\\n| table " + ",".join(rule.fields)) if rule.fields else ""
         return f"""
 [{clean_title}]
 description = {escaped_description}
-search = {escaped_query}"""
+search = {escaped_query}{table_fields}"""
 
     def finalize_output_savedsearches(self, queries: List[str]) -> str:
         return f"""
