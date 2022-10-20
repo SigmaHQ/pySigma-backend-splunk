@@ -10,7 +10,7 @@ def splunk_backend():
 
 @pytest.fixture
 def splunk_custom_backend():
-    return SplunkBackend(gen_settings = lambda x: {"custom.query.key": x.title}, output_settings = {"custom.key": "customvalue"})
+    return SplunkBackend(query_settings = lambda x: {"custom.query.key": x.title}, output_settings = {"custom.key": "customvalue"})
 
 def test_splunk_and_expression(splunk_backend : SplunkBackend):
     rule = SigmaCollection.from_yaml("""

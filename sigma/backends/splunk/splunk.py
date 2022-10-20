@@ -76,11 +76,19 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator : ClassVar[str] = "\n| "
     deferred_only_query : ClassVar[str] = "*"
 
-    def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", gen_settings : Callable[[SigmaRule], Dict[str, str]] = lambda x: {}, output_settings : Dict = {}, **kwargs):
+    def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", query_settings : Callable[[SigmaRule], Dict[str, str]] = lambda x: {}, output_settings : Dict = {}, **kwargs):
         super().__init__(processing_pipeline, collect_errors, **kwargs)
-        self.gen_settings = gen_settings
+        self.query_settings = query_settings
         self.output_settings = {"dispatch.earliest_time": min_time, "dispatch.latest_time": max_time}
         self.output_settings.update(output_settings)
+
+    @staticmethod
+    def _generate_settings(settings):
+        """Format a settings dict into newline separated k=v string. Escape multi-line values."""
+        output = ""
+        for k, v in settings.items():
+            output += f"\n{k} = " + " \\\n".join(v.split("\n"))  # cannot use \ in f-strings
+        return output
 
     def convert_condition_field_eq_val_re(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
@@ -100,21 +108,14 @@ class SplunkBackend(TextQueryBackend):
 
     def finalize_query_savedsearches(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
         clean_title = rule.title.translate({ord(c): None for c in "[]"})      # remove brackets from title
-        query_settings = self.gen_settings(rule)
+        query_settings = self.query_settings(rule)
         query_settings["description"] = rule.description.strip() if rule.description else ""
         query_settings["search"] = query + ("\n| table " + ",".join(rule.fields) if rule.fields else "")
 
-        output = f"\n[{clean_title}]"
-        for k, v in query_settings.items():
-            output += f"\n{k} = " + " \\\n".join(v.split("\n"))  # cannot use \ in f-strings
-        return output
+        return f"\n[{clean_title}]" + self._generate_settings(query_settings)
 
     def finalize_output_savedsearches(self, queries: List[str]) -> str:
-        output = f"\n[default]\n"
-        for k, v in self.output_settings.items():
-            output += f"{k} = {v}\n"
-        output += "\n".join(queries)
-        return output
+        return f"\n[default]" + self._generate_settings(self.output_settings) + "\n" + "\n".join(queries)
 
     def finalize_query_data_model(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
         data_model = None
