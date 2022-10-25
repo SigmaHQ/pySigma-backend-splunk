@@ -8,6 +8,10 @@ from sigma.pipelines.splunk import splunk_cim_data_model
 def splunk_backend():
     return SplunkBackend()
 
+@pytest.fixture
+def splunk_custom_backend():
+    return SplunkBackend(query_settings = lambda x: {"custom.query.key": x.title}, output_settings = {"custom.key": "customvalue"})
+
 def test_splunk_and_expression(splunk_backend : SplunkBackend):
     rule = SigmaCollection.from_yaml("""
             title: Test
@@ -273,13 +277,66 @@ dispatch.earliest_time = -30d
 dispatch.latest_time = now
 
 [Test 1]
-description = this is a description\\
+description = this is a description \\
 across two lines
 search = fieldB="foo" fieldC="bar" \\
 | regex fieldA="foo.*bar" \\
 | table fieldA
 
 [Test 2]
+description = 
+search = fieldA="foo" fieldB="bar" \\
+| table fieldA,fieldB"""
+
+def test_splunk_savedsearch_output_custom(splunk_custom_backend : SplunkBackend):
+    rules = """
+title: Test 1
+description: |
+  this is a description
+  across two lines
+status: test
+logsource:
+    category: test_category
+    product: test_product
+fields:
+    - fieldA
+detection:
+    sel:
+        fieldA|re: foo.*bar
+        fieldB: foo
+        fieldC: bar
+    condition: sel
+---
+title: Test 2
+status: test
+logsource:
+    category: test_category
+    product: test_product
+fields:
+    - fieldA
+    - fieldB
+detection:
+    sel:
+        fieldA: foo
+        fieldB: bar
+    condition: sel
+    """
+    assert splunk_custom_backend.convert(SigmaCollection.from_yaml(rules), "savedsearches") == """
+[default]
+dispatch.earliest_time = -30d
+dispatch.latest_time = now
+custom.key = customvalue
+
+[Test 1]
+custom.query.key = Test 1
+description = this is a description \\
+across two lines
+search = fieldB="foo" fieldC="bar" \\
+| regex fieldA="foo.*bar" \\
+| table fieldA
+
+[Test 2]
+custom.query.key = Test 2
 description = 
 search = fieldA="foo" fieldB="bar" \\
 | table fieldA,fieldB"""
