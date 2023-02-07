@@ -12,12 +12,10 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.8"
 pysigma = "^0.9.0"
-pysigma-pipeline-sysmon = "^1.0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"
 pytest-cov = "^2.11.1"
-pysigma-pipeline-sysmon = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
