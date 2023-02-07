@@ -8,7 +8,7 @@ from sigma.types import SigmaCompareExpression
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 from sigma.pipelines.splunk.splunk import splunk_sysmon_process_creation_cim_mapping, splunk_windows_registry_cim_mapping, splunk_windows_file_event_cim_mapping
 import sigma
-from typing import ClassVar, Dict, List, Optional, Pattern, Tuple
+from typing import Callable, ClassVar, Dict, List, Optional, Pattern, Tuple
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     template = 'regex {field}{op}"{value}"'
@@ -84,10 +84,19 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator : ClassVar[str] = "\n| "
     deferred_only_query : ClassVar[str] = "*"
 
-    def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", **kwargs):
+    def __init__(self, processing_pipeline: Optional["sigma.processing.pipeline.ProcessingPipeline"] = None, collect_errors: bool = False, min_time : str = "-30d", max_time : str = "now", query_settings : Callable[[SigmaRule], Dict[str, str]] = lambda x: {}, output_settings : Dict = {}, **kwargs):
         super().__init__(processing_pipeline, collect_errors, **kwargs)
-        self.min_time = min_time or "-30d"
-        self.max_time = max_time or "now"
+        self.query_settings = query_settings
+        self.output_settings = {"dispatch.earliest_time": min_time, "dispatch.latest_time": max_time}
+        self.output_settings.update(output_settings)
+
+    @staticmethod
+    def _generate_settings(settings):
+        """Format a settings dict into newline separated k=v string. Escape multi-line values."""
+        output = ""
+        for k, v in settings.items():
+            output += f"\n{k} = " + " \\\n".join(v.split("\n"))  # cannot use \ in f-strings
+        return output
 
     def convert_condition_field_eq_val_re(self, cond : ConditionFieldEqualsValueExpression, state : "sigma.conversion.state.ConversionState") -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
@@ -101,21 +110,20 @@ class SplunkBackend(TextQueryBackend):
             raise SigmaFeatureNotSupportedByBackendError("ORing CIDR matching is not yet supported by Splunk backend", source=cond.source)
         return SplunkDeferredCIDRExpression(state, cond.field, super().convert_condition_field_eq_val_cidr(cond, state)).postprocess(None, cond)
 
+    def finalize_query_default(self, rule : SigmaRule, query : str, index : int, state : ConversionState) -> str:
+        table_fields = " | table " + ",".join(rule.fields) if rule.fields else ""
+        return query + table_fields
+
     def finalize_query_savedsearches(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
         clean_title = rule.title.translate({ord(c): None for c in "[]"})      # remove brackets from title
-        escaped_description = "\\\n".join(rule.description.strip().split("\n")) if rule.description else ""      # support multi-line descriptions
-        escaped_query = " \\\n".join(query.split("\n"))      # escape line ends for multiline queries
-        return f"""
-[{clean_title}]
-description = {escaped_description}
-search = {escaped_query}"""
+        query_settings = self.query_settings(rule)
+        query_settings["description"] = rule.description.strip() if rule.description else ""
+        query_settings["search"] = query + ("\n| table " + ",".join(rule.fields) if rule.fields else "")
+
+        return f"\n[{clean_title}]" + self._generate_settings(query_settings)
 
     def finalize_output_savedsearches(self, queries: List[str]) -> str:
-        return f"""
-[default]
-dispatch.earliest_time = {self.min_time}
-dispatch.latest_time = {self.max_time}
-""" + "\n".join(queries)
+        return f"\n[default]" + self._generate_settings(self.output_settings) + "\n" + "\n".join(queries)
 
     def finalize_query_data_model(self, rule: SigmaRule, query: str, index: int, state: ConversionState) -> str:
         data_model = None
