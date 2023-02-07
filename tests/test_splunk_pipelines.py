@@ -11,20 +11,39 @@ from sigma.exceptions import SigmaTransformationError
     windows_logsource_mapping.items()
 )
 def test_splunk_windows_pipeline_simple(service, source):
-    assert SplunkBackend(processing_pipeline=splunk_windows_pipeline()).convert(
-        SigmaCollection.from_yaml(f"""
-            title: Test
-            status: test
-            logsource:
-                product: windows
-                service: {service}
-            detection:
-                sel:
-                    EventID: 123
-                    field: value
-                condition: sel
-        """)
-    ) == [f"source=\"WinEventLog:{source}\" EventCode=123 field=\"value\""]
+    if isinstance(source, str):
+        assert SplunkBackend(processing_pipeline=splunk_windows_pipeline()).convert(
+            SigmaCollection.from_yaml(f"""
+                title: Test
+                status: test
+                logsource:
+                    product: windows
+                    service: {service}
+                detection:
+                    sel:
+                        EventID: 123
+                        field: value
+                    condition: sel
+            """)
+        ) == [f"source=\"WinEventLog:{source}\" EventCode=123 field=\"value\""]
+    else:
+        assert SplunkBackend(processing_pipeline=splunk_windows_pipeline()).convert(
+            SigmaCollection.from_yaml(f"""
+                title: Test
+                status: test
+                logsource:
+                    product: windows
+                    service: {service}
+                detection:
+                    sel:
+                        EventID: 123
+                        field: value
+                    condition: sel
+            """)
+        ) == ["source IN (" + ", ".join((
+                f"\"WinEventLog:{source_item}\""
+                for source_item in source
+            )) + ") EventCode=123 field=\"value\""]
 
 def test_splunk_sysmon_process_creation_keyword_acceleration():
     assert SplunkBackend(processing_pipeline=sysmon_pipeline() + splunk_windows_pipeline() + splunk_windows_sysmon_acceleration_keywords()).convert(

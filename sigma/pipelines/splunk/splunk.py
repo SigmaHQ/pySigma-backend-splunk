@@ -7,9 +7,9 @@ from sigma.pipelines.common import \
     logsource_windows_registry_set, \
     logsource_windows_file_event, \
     logsource_linux_process_creation, \
-    windows_logsource_mapping
+    generate_windows_logsource_items
 from sigma.processing.transformations import AddConditionTransformation, FieldMappingTransformation, DetectionItemFailureTransformation, RuleFailureTransformation, SetStateTransformation
-from sigma.processing.conditions import LogsourceCondition, IncludeFieldCondition, ExcludeFieldCondition, RuleProcessingItemAppliedCondition
+from sigma.processing.conditions import LogsourceCondition, ExcludeFieldCondition, RuleProcessingItemAppliedCondition
 from sigma.processing.pipeline import ProcessingItem, ProcessingPipeline
 
 windows_sysmon_acceleration_keywords = {    # Map Sysmon event sources and keywords that are added to search for Sysmon optimization pipeline
@@ -55,14 +55,7 @@ def splunk_windows_pipeline():
     return ProcessingPipeline(
         name="Splunk Windows log source conditions",
         priority=20,
-        items=[
-            ProcessingItem(         # log sources mapped from windows_service_source_mapping
-                identifier=f"splunk_windows_{service}",
-                transformation=AddConditionTransformation({ "source": "WinEventLog:" + source}),
-                rule_conditions=[logsource_windows(service)],
-            )
-            for service, source in windows_logsource_mapping.items()
-        ] + [
+        items=generate_windows_logsource_items("source", "WinEventLog:{source}") + [
             ProcessingItem(     # Field mappings
                 identifier="splunk_windows_field_mapping",
                 transformation=FieldMappingTransformation({
