@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pysigma-backend-splunk"
-version = "1.0.0"
+version = "1.0.1"
 description = "pySigma Splunk backend"
 authors = ["Thomas Patzke <thomas@patzke.org>"]
 license = "LGPL-2.1-only"
