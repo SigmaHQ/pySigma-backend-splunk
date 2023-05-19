@@ -90,6 +90,7 @@ def test_splunk_process_creation_dm():
                     CurrentDirectory: test
                     Image: test
                     IntegrityLevel: test
+                    OriginalFileName: test
                     ParentCommandLine: test
                     ParentImage: test
                     ParentProcessGuid: test
