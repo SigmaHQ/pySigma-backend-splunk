@@ -23,6 +23,7 @@ splunk_sysmon_process_creation_cim_mapping = {
     "CurrentDirectory": "Processes.process_current_directory",
     "Image": "Processes.process_path",
     "IntegrityLevel": "Processes.process_integrity_level",
+    "OriginalFileName": "Processes.original_file_name",
     "ParentCommandLine": "Processes.parent_process",
     "ParentImage": "Processes.parent_process_path",
     "ParentProcessGuid": "Processes.parent_process_guid",
