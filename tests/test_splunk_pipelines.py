@@ -100,7 +100,7 @@ def test_splunk_process_creation_dm():
                     User: test
                 condition: sel
         """)
-    ) == [f"Processes.process=\"test\" Processes.process_current_directory=\"test\" Processes.process_path=\"test\" Processes.process_integrity_level=\"test\" Processes.parent_process=\"test\" Processes.parent_process_path=\"test\" Processes.parent_process_guid=\"test\" Processes.parent_process_id=\"test\" Processes.process_guid=\"test\" Processes.process_id=\"test\" Processes.user=\"test\""]
+    ) == [f"Processes.process=\"test\" Processes.process_current_directory=\"test\" Processes.process_path=\"test\" Processes.process_integrity_level=\"test\" Processes.original_file_name=\"test\" Processes.parent_process=\"test\" Processes.parent_process_path=\"test\" Processes.parent_process_guid=\"test\" Processes.parent_process_id=\"test\" Processes.process_guid=\"test\" Processes.process_id=\"test\" Processes.user=\"test\""]
 
 def test_splunk_process_creation_dm_unsupported_fields():
     with pytest.raises(SigmaTransformationError):
