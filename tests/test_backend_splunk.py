@@ -535,6 +535,7 @@ detection:
     """
     assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "savedsearches_accelerated_data_model") == ["""
 [Test]
+alert.severity = 
 alert.suppress = 0
 alert.track = 1
 counttype = number of events
