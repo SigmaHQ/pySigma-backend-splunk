@@ -17,10 +17,12 @@ windows_sysmon_acceleration_keywords = {    # Map Sysmon event sources and keywo
    "file_event": "TargetFilename",
 }
 
+# Maps Sysmon EventId 1 (ProcessCreate) fields to the Splunk Endpoint.Processes dataset.
 splunk_sysmon_process_creation_cim_mapping = {
     "CommandLine": "Processes.process",
     "Computer": "Processes.dest",
     "CurrentDirectory": "Processes.process_current_directory",
+    "Hashes": "Processes.process_hash",
     "Image": "Processes.process_path",
     "IntegrityLevel": "Processes.process_integrity_level",
     "OriginalFileName": "Processes.original_file_name",
@@ -31,7 +33,7 @@ splunk_sysmon_process_creation_cim_mapping = {
     "ProcessGuid": "Processes.process_guid",
     "ProcessId": "Processes.process_id",
     "User": "Processes.user",
-}
+} # Not mapped: FileVersion, Description, Product, Company, LogonGuid, LogonId, TerminalSessionId
 
 splunk_windows_registry_cim_mapping = {
     "Computer": "Registry.dest",
