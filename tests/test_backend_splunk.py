@@ -519,3 +519,35 @@ detection:
     """
     with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="No data model specified"):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
+def test_splunk_savedsearches_accelerated_data_model_process_creation():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "savedsearches_accelerated_data_model") == ["""
+[Test]
+alert.suppress = 0
+alert.track = 1
+counttype = number of events
+cron_schedule = 0 * * * *
+description = 
+dispatch.earliest_time = -65m@m
+dispatch.latest_time = -5m@m
+display.events.fields = ["host", "tag::eventtype"]
+display.events.type = raw
+display.general.type = statistics
+display.page.search.mode = fast
+display.page.search.tab = statistics
+enableSched = 1
+quantity = 0
+relation = greater than
+search = | tstats summariesonly=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user | `drop_dm_object_name(Processes)` | convert timeformat="%F %X" ctime(firstTime) ctime(lastTime) """]
