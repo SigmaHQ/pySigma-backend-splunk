@@ -2,6 +2,7 @@
 name = "pysigma-backend-splunk"
 version = "1.0.3"
 description = "pySigma Splunk backend"
+readme = "README.md"
 authors = ["Thomas Patzke <thomas@patzke.org>"]
 license = "LGPL-2.1-only"
 repository = "https://github.com/SigmaHQ/pySigma-backend-splunk"
