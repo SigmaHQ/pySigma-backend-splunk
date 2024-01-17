@@ -108,6 +108,52 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
 
+    # Correlations
+    correlation_methods: ClassVar[Dict[str, str]] = {
+        "stats": "Correlation using stats command (more efficient, static time window)",
+        "transaction": "Correlation using transaction command (less efficient, sliding time window",
+    }
+    default_correlation_method: ClassVar[str] = "stats"
+    default_correlation_query: ClassVar[str] = {"stats": "{search}\n\n{aggregate}\n\n{condition}"}
+
+    correlation_search_single_rule_expression: ClassVar[str] = "{query}"
+    correlation_search_multi_rule_expression: ClassVar[str] = "| multisearch\n{queries}"
+    correlation_search_multi_rule_query_expression: ClassVar[
+        str
+    ] = '[ search {query} | eval event_type="{ruleid}"{normalization} ]'
+    correlation_search_multi_rule_query_expression_joiner: ClassVar[str] = "\n"
+
+    correlation_search_field_normalization_expression: ClassVar[str] = " | rename {field} as {alias}"
+    correlation_search_field_normalization_expression_joiner: ClassVar[str] = ""
+
+    event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| bin _time span={timespan}\n| stats count as event_count by _time{groupby}",
+    }
+    value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count by _time{groupby}",
+    }
+    temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count by _time{groupby}",
+    }
+
+    timespan_mapping: ClassVar[Dict[str, str]] = {
+        "M": "mon",
+    }
+
+    groupby_expression: ClassVar[Dict[str, str]] = {"stats": " {fields}"}
+    groupby_field_expression: ClassVar[Dict[str, str]] = {"stats": "{field}"}
+    groupby_field_expression_joiner: ClassVar[Dict[str, str]] = {"stats": " "}
+
+    event_count_condition_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| search event_count {op} {count}"
+    }
+    value_count_condition_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| search value_count {op} {count}"
+    }
+    temporal_condition_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| search event_type_count {op} {count}"
+    }
+
     def __init__(
         self,
         processing_pipeline: Optional[
