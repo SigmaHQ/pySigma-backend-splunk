@@ -111,7 +111,7 @@ class SplunkBackend(TextQueryBackend):
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
         "stats": "Correlation using stats command (more efficient, static time window)",
-        "transaction": "Correlation using transaction command (less efficient, sliding time window",
+        #"transaction": "Correlation using transaction command (less efficient, sliding time window",
     }
     default_correlation_method: ClassVar[str] = "stats"
     default_correlation_query: ClassVar[str] = {"stats": "{search}\n\n{aggregate}\n\n{condition}"}
