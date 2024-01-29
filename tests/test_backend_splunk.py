@@ -4,16 +4,23 @@ from sigma.backends.splunk import SplunkBackend
 from sigma.collection import SigmaCollection
 from sigma.pipelines.splunk import splunk_cim_data_model
 
+
 @pytest.fixture
 def splunk_backend():
     return SplunkBackend()
 
+
 @pytest.fixture
 def splunk_custom_backend():
-    return SplunkBackend(query_settings = lambda x: {"custom.query.key": x.title}, output_settings = {"custom.key": "customvalue"})
+    return SplunkBackend(
+        query_settings=lambda x: {"custom.query.key": x.title},
+        output_settings={"custom.key": "customvalue"},
+    )
 
-def test_splunk_and_expression(splunk_backend : SplunkBackend):
-    rule = SigmaCollection.from_yaml("""
+
+def test_splunk_and_expression(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
             title: Test
             status: test
             logsource:
@@ -24,12 +31,15 @@ def test_splunk_and_expression(splunk_backend : SplunkBackend):
                     fieldA: valueA
                     fieldB: valueB
                 condition: sel
-        """)
+        """
+    )
 
     assert splunk_backend.convert(rule) == ['fieldA="valueA" fieldB="valueB"']
 
-def test_splunk_or_expression(splunk_backend : SplunkBackend):
-    rule = SigmaCollection.from_yaml("""
+
+def test_splunk_or_expression(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
             title: Test
             status: test
             logsource:
@@ -41,11 +51,14 @@ def test_splunk_or_expression(splunk_backend : SplunkBackend):
                 sel2:
                     fieldB: valueB
                 condition: 1 of sel*
-        """)
+        """
+    )
     assert splunk_backend.convert(rule) == ['fieldA="valueA" OR fieldB="valueB"']
 
-def test_splunk_and_or_expression(splunk_backend : SplunkBackend):
-    rule = SigmaCollection.from_yaml("""
+
+def test_splunk_and_or_expression(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
             title: Test
             status: test
             logsource:
@@ -60,11 +73,16 @@ def test_splunk_and_or_expression(splunk_backend : SplunkBackend):
                         - valueB1
                         - valueB2
                 condition: sel
-        """)
-    assert splunk_backend.convert(rule) == ['fieldA IN ("valueA1", "valueA2") fieldB IN ("valueB1", "valueB2")']
+        """
+    )
+    assert splunk_backend.convert(rule) == [
+        'fieldA IN ("valueA1", "valueA2") fieldB IN ("valueB1", "valueB2")'
+    ]
 
-def test_splunk_or_and_expression(splunk_backend : SplunkBackend):
-    rule = SigmaCollection.from_yaml("""
+
+def test_splunk_or_and_expression(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
             title: Test
             status: test
             logsource:
@@ -78,12 +96,18 @@ def test_splunk_or_and_expression(splunk_backend : SplunkBackend):
                     fieldA: valueA2
                     fieldB: valueB2
                 condition: 1 of sel*
-        """)
-    assert splunk_backend.convert(rule) == ['(fieldA="valueA1" fieldB="valueB1") OR (fieldA="valueA2" fieldB="valueB2")']
+        """
+    )
+    assert splunk_backend.convert(rule) == [
+        '(fieldA="valueA1" fieldB="valueB1") OR (fieldA="valueA2" fieldB="valueB2")'
+    ]
 
-def test_splunk_in_expression(splunk_backend : SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml("""
+
+def test_splunk_in_expression(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
             title: Test
             status: test
             logsource:
@@ -96,12 +120,18 @@ def test_splunk_in_expression(splunk_backend : SplunkBackend):
                         - valueB
                         - valueC*
                 condition: sel
-        """)
-    ) == ['fieldA IN ("valueA", "valueB", "valueC*")']
+        """
+            )
+        )
+        == ['fieldA IN ("valueA", "valueB", "valueC*")']
+    )
 
-def test_splunk_field_name_with_whitespace(splunk_backend : SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml("""
+
+def test_splunk_field_name_with_whitespace(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
             title: Test
             status: test
             logsource:
@@ -111,12 +141,18 @@ def test_splunk_field_name_with_whitespace(splunk_backend : SplunkBackend):
                 sel:
                     field name: valueA
                 condition: sel
-        """)
-    ) == ['"field name"="valueA"']
+        """
+            )
+        )
+        == ['"field name"="valueA"']
+    )
 
-def test_splunk_regex_query(splunk_backend : SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml("""
+
+def test_splunk_regex_query(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
             title: Test
             status: test
             logsource:
@@ -128,13 +164,20 @@ def test_splunk_regex_query(splunk_backend : SplunkBackend):
                     fieldB: foo
                     fieldC: bar
                 condition: sel
-        """)
-    ) == ["fieldB=\"foo\" fieldC=\"bar\"\n| regex fieldA=\"foo.*bar\""]
+        """
+            )
+        )
+        == ['fieldB="foo" fieldC="bar"\n| regex fieldA="foo.*bar"']
+    )
 
-def test_splunk_regex_query_implicit_or(splunk_backend : SplunkBackend):
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"):
+
+def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"
+    ):
         splunk_backend.convert(
-            SigmaCollection.from_yaml("""
+            SigmaCollection.from_yaml(
+                """
                 title: Test
                 status: test
                 logsource:
@@ -148,13 +191,18 @@ def test_splunk_regex_query_implicit_or(splunk_backend : SplunkBackend):
                         fieldB: foo
                         fieldC: bar
                     condition: sel
-            """)
+            """
+            )
         )
 
-def test_splunk_regex_query_explicit_or(splunk_backend : SplunkBackend):
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"):
+
+def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"
+    ):
         splunk_backend.convert(
-            SigmaCollection.from_yaml("""
+            SigmaCollection.from_yaml(
+                """
                 title: Test
                 status: test
                 logsource:
@@ -166,12 +214,16 @@ def test_splunk_regex_query_explicit_or(splunk_backend : SplunkBackend):
                     sel2:
                         fieldB|re: boo.*foo
                     condition: sel1 or sel2
-            """)
+            """
+            )
         )
 
-def test_splunk_single_regex_query(splunk_backend : SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml("""
+
+def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
             title: Test
             status: test
             logsource:
@@ -181,12 +233,18 @@ def test_splunk_single_regex_query(splunk_backend : SplunkBackend):
                 sel:
                     fieldA|re: foo.*bar
                 condition: sel
-        """)
-    ) == ["*\n| regex fieldA=\"foo.*bar\""]
+        """
+            )
+        )
+        == ['*\n| regex fieldA="foo.*bar"']
+    )
 
-def test_splunk_cidr_query(splunk_backend : SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml("""
+
+def test_splunk_cidr_query(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
             title: Test
             status: test
             logsource:
@@ -198,13 +256,18 @@ def test_splunk_cidr_query(splunk_backend : SplunkBackend):
                     fieldB: foo
                     fieldC: bar
                 condition: sel
-        """)
-    ) == ["fieldB=\"foo\" fieldC=\"bar\"\n| where cidrmatch(\"192.168.0.0/16\", fieldA)"]
+        """
+            )
+        )
+        == ['fieldB="foo" fieldC="bar"\n| where cidrmatch("192.168.0.0/16", fieldA)']
+    )
 
-def test_splunk_cidr_or(splunk_backend : SplunkBackend):
+
+def test_splunk_cidr_or(splunk_backend: SplunkBackend):
     with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing CIDR"):
         splunk_backend.convert(
-            SigmaCollection.from_yaml("""
+            SigmaCollection.from_yaml(
+                """
                 title: Test
                 status: test
                 logsource:
@@ -218,11 +281,14 @@ def test_splunk_cidr_or(splunk_backend : SplunkBackend):
                         fieldB: foo
                         fieldC: bar
                     condition: sel
-            """)
+            """
+            )
         )
 
-def test_splunk_fields_output(splunk_backend : SplunkBackend):
-    rule = SigmaCollection.from_yaml("""
+
+def test_splunk_fields_output(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
             title: Test
             status: test
             logsource:
@@ -234,11 +300,13 @@ def test_splunk_fields_output(splunk_backend : SplunkBackend):
                 sel:
                     fieldA: valueA
                 condition: sel
-        """)
+        """
+    )
 
     assert splunk_backend.convert(rule) == ['fieldA="valueA" | table fieldA']
 
-def test_splunk_savedsearch_output(splunk_backend : SplunkBackend):
+
+def test_splunk_savedsearch_output(splunk_backend: SplunkBackend):
     rules = """
 title: Test 1
 description: |
@@ -271,7 +339,9 @@ detection:
         fieldB: bar
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rules), "savedsearches") == """
+    assert (
+        splunk_backend.convert(SigmaCollection.from_yaml(rules), "savedsearches")
+        == """
 [default]
 dispatch.earliest_time = -30d
 dispatch.latest_time = now
@@ -287,8 +357,10 @@ search = fieldB="foo" fieldC="bar" \\
 description = 
 search = fieldA="foo" fieldB="bar" \\
 | table fieldA,fieldB"""
+    )
 
-def test_splunk_savedsearch_output_custom(splunk_custom_backend : SplunkBackend):
+
+def test_splunk_savedsearch_output_custom(splunk_custom_backend: SplunkBackend):
     rules = """
 title: Test 1
 description: |
@@ -321,7 +393,9 @@ detection:
         fieldB: bar
     condition: sel
     """
-    assert splunk_custom_backend.convert(SigmaCollection.from_yaml(rules), "savedsearches") == """
+    assert (
+        splunk_custom_backend.convert(SigmaCollection.from_yaml(rules), "savedsearches")
+        == """
 [default]
 dispatch.earliest_time = -30d
 dispatch.latest_time = now
@@ -340,6 +414,8 @@ custom.query.key = Test 2
 description = 
 search = fieldA="foo" fieldB="bar" \\
 | table fieldA,fieldB"""
+    )
+
 
 def test_splunk_data_model_process_creation():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -354,13 +430,18 @@ detection:
         CommandLine: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
 Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
 Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
 | `drop_dm_object_name(Processes)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_registry_add():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -375,12 +456,17 @@ detection:
         TargetObject: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
 Registry.registry_key_name="test" by Registry.dest Registry.registry_value_data Registry.action Registry.process_path Registry.process_guid Registry.process_id Registry.registry_key_name
 | `drop_dm_object_name(Registry)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_registry_delete():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -395,12 +481,17 @@ detection:
         TargetObject: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
 Registry.registry_key_name="test" by Registry.dest Registry.registry_value_data Registry.action Registry.process_path Registry.process_guid Registry.process_id Registry.registry_key_name
 | `drop_dm_object_name(Registry)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_registry_event():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -415,13 +506,18 @@ detection:
         TargetObject: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """
 | tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
 Registry.registry_key_name="test" by Registry.dest Registry.registry_value_data Registry.action Registry.process_path Registry.process_guid Registry.process_id Registry.registry_key_name
 | `drop_dm_object_name(Registry)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", "")]
+""".replace(
+            "\n", ""
+        )
+    ]
+
 
 def test_splunk_data_model_registry_event():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -436,12 +532,17 @@ detection:
         TargetObject: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
 Registry.registry_key_name="test" by Registry.dest Registry.registry_value_data Registry.action Registry.process_path Registry.process_guid Registry.process_id Registry.registry_key_name
 | `drop_dm_object_name(Registry)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_registry_set():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -456,12 +557,17 @@ detection:
         TargetObject: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Registry where
 Registry.registry_key_name="test" by Registry.dest Registry.registry_value_data Registry.action Registry.process_path Registry.process_guid Registry.process_id Registry.registry_key_name
 | `drop_dm_object_name(Registry)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_file_event():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -476,12 +582,17 @@ detection:
         TargetFilename: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Filesystem where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Filesystem where
 Filesystem.file_path="test" by Filesystem.dest Filesystem.file_create_time Filesystem.process_path Filesystem.process_guid Filesystem.process_id Filesystem.file_path
 | `drop_dm_object_name(Filesystem)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_process_creation_linux():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -496,13 +607,18 @@ detection:
         CommandLine: test
     condition: sel
     """
-    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == ["""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
 Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
 Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
 | `drop_dm_object_name(Processes)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
-""".replace("\n", " ")]
+""".replace(
+            "\n", " "
+        )
+    ]
+
 
 def test_splunk_data_model_no_data_model_specified():
     splunk_backend = SplunkBackend()
@@ -517,5 +633,7 @@ detection:
         CommandLine: test
     condition: sel
     """
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="No data model specified"):
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="No data model specified"
+    ):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")

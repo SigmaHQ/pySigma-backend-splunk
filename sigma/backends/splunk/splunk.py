@@ -42,19 +42,19 @@ class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
 class SplunkBackend(TextQueryBackend):
     """Splunk SPL backend."""
 
-    name: ClassVar[
-        str
-    ] = "Splunk SPL & tstats data model queries"  # A descriptive name of the backend
-    formats: ClassVar[
-        Dict[str, str]
-    ] = {  # Output formats provided by the backend as name -> description mapping. The name should match to finalize_output_<name>.
-        "default": "Plain SPL queries",
-        "savedsearches": "Plain SPL in a savedsearches.conf file",
-        "data_model": "Data model queries with tstats",
-    }
-    requires_pipeline: ClassVar[
-        bool
-    ] = True  # Does the backend requires that a processing pipeline is provided?
+    name: ClassVar[str] = (
+        "Splunk SPL & tstats data model queries"  # A descriptive name of the backend
+    )
+    formats: ClassVar[Dict[str, str]] = (
+        {  # Output formats provided by the backend as name -> description mapping. The name should match to finalize_output_<name>.
+            "default": "Plain SPL queries",
+            "savedsearches": "Plain SPL in a savedsearches.conf file",
+            "data_model": "Data model queries with tstats",
+        }
+    )
+    requires_pipeline: ClassVar[bool] = (
+        True  # Does the backend requires that a processing pipeline is provided?
+    )
 
     precedence: ClassVar[Tuple[ConditionItem, ConditionItem, ConditionItem]] = (
         ConditionNOT,
