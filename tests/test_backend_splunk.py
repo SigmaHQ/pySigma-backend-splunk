@@ -172,9 +172,7 @@ def test_splunk_regex_query(splunk_backend: SplunkBackend):
 
 
 def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
-    with pytest.raises(
-        SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"
-    ):
+    assert (
         splunk_backend.convert(
             SigmaCollection.from_yaml(
                 """
@@ -194,12 +192,15 @@ def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
             """
             )
         )
+        == [
+            '| rex field=fieldA "(?<fieldAMatch>foo.*bar)" | rex field=fieldACondition "(?<fieldAConditionMatch>boo.*foo)" | eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false") | eval fieldAConditionCondition=if(isnotnull(fieldAConditionMatch), "true", "false") | search fieldAConditionCondition="true" fieldB="foo" fieldC="bar"'
+        ]
+    )
 
 
 def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
-    with pytest.raises(
-        SigmaFeatureNotSupportedByBackendError, match="ORing regular expressions"
-    ):
+
+    assert (
         splunk_backend.convert(
             SigmaCollection.from_yaml(
                 """
@@ -217,6 +218,10 @@ def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
             """
             )
         )
+        == [
+            '| rex field=fieldA "(?<fieldAMatch>foo.*bar)" | rex field=fieldB "(?<fieldBMatch>boo.*foo)" | eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false") | eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false") | search fieldACondition="true" OR fieldBCondition="true"'
+        ]
+    )
 
 
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
