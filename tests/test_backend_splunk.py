@@ -193,7 +193,7 @@ def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
             )
         )
         == [
-            '| rex field=fieldA "(?<fieldAMatch>foo.*bar)" | rex field=fieldACondition "(?<fieldAConditionMatch>boo.*foo)" | eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false") | eval fieldAConditionCondition=if(isnotnull(fieldAConditionMatch), "true", "false") | search fieldAConditionCondition="true" fieldB="foo" fieldC="bar"'
+            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)" \n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldB "(?<fieldBMatch>boo.*foo)" \n| eval fieldBCondition=if(isnotnull(fieldAConditionMatch), "true", "false")\n| search (fieldACondition="true" OR fieldBCondition="true")  fieldB="foo" fieldC="bar"'
         ]
     )
 
@@ -219,7 +219,7 @@ def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
             )
         )
         == [
-            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)" \n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false") \n| rex field=fieldB "(?<fieldBMatch>boo.*foo)"  \n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false") \n| search fieldACondition="true" OR fieldBCondition="true"'
+            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)" \n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldB "(?<fieldBMatch>boo.*foo)" \n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
         ]
     )
 

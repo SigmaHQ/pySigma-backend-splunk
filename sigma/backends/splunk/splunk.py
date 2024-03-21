@@ -32,7 +32,7 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
 
 
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
-    template = 'rex field={field} "(?<{field}Match>{value})" | eval {field}Condition=if(isnotnull({field}Match), "true", "false")'
+    template = 'rex field={field} "(?<{field}Match>{value})" \n| eval {field}Condition=if(isnotnull({field}Match), "true", "false")'
     default_field = "_raw"
     operators = {
         True: "!=",
@@ -266,6 +266,7 @@ class SplunkBackend(TextQueryBackend):
                     rule,
                     self.deferred_start
                     + self.deferred_separator.join(deferred_regex_or_expressions)
+                    + "\n| search "
                     + query,
                     index,
                     state,
