@@ -53,12 +53,6 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         )
         return super().__init__(state, field, arg)
 
-    default_field = "_raw"
-    operators = {
-        True: "!=",
-        False: "=",
-    }
-
 
 class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
     template = 'where {op}cidrmatch("{value}", {field})'
