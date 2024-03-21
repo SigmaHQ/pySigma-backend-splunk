@@ -31,6 +31,15 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     default_field = "_raw"
 
 
+class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
+    template = 'rex field={field} "(?<{field}Match>{value})" | eval {field}Condition=if(isnotnull({field}Match), "true", "false")'
+    default_field = "_raw"
+    operators = {
+        True: "!=",
+        False: "=",
+    }
+
+
 class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
     template = 'where {op}cidrmatch("{value}", {field})'
     operators = {
