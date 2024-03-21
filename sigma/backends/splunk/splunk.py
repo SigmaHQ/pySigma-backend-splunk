@@ -2,7 +2,7 @@ import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
 from sigma.rule import SigmaRule, SigmaDetection
-from sigma.conversion.base import TextQueryBackend
+from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import (
     ConditionFieldEqualsValueExpression,
@@ -19,7 +19,7 @@ from sigma.pipelines.splunk.splunk import (
     splunk_windows_file_event_cim_mapping,
 )
 import sigma
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
 
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
@@ -236,6 +236,41 @@ class SplunkBackend(TextQueryBackend):
         return SplunkDeferredCIDRExpression(
             state, cond.field, super().convert_condition_field_eq_val_cidr(cond, state)
         ).postprocess(None, cond)
+
+    def finalize_query(
+        self,
+        rule: SigmaRule,
+        query: Union[str, DeferredQueryExpression],
+        index: int,
+        state: ConversionState,
+        output_format: str,
+    ) -> Union[str, DeferredQueryExpression]:
+
+        if state.has_deferred():
+            deferred_regex_or_expressions = []
+            no_regex_oring_deferred_expression = []
+
+            for index, deferred_expression in enumerate(state.deferred):
+
+                if type(deferred_expression) == SplunkDeferredORRegularExpression:
+                    deferred_regex_or_expressions.append(
+                        deferred_expression.finalize_expression()
+                    )
+                else:
+                    no_regex_oring_deferred_expression.append(deferred_expression)
+            # remove deferred oring regex expressions from the state
+            state.deferred = no_regex_oring_deferred_expression
+            return super().finalize_query(
+                rule,
+                self.deferred_start
+                + self.deferred_separator.join(deferred_regex_or_expressions)
+                + query,
+                index,
+                state,
+                output_format,
+            )
+        else:
+            return super().finalize_query(rule, query, index, state, output_format)
 
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
