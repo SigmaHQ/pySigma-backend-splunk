@@ -262,7 +262,8 @@ class SplunkBackend(TextQueryBackend):
         state: ConversionState,
         output_format: str,
     ) -> Union[str, DeferredQueryExpression]:
-
+        # need to reset the instances count of deferred oring expression classes
+        SplunkDeferredORRegularExpression.instance_count = 0
         if state.has_deferred():
             deferred_regex_or_expressions = []
             no_regex_oring_deferred_expression = []
