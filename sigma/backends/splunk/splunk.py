@@ -258,19 +258,21 @@ class SplunkBackend(TextQueryBackend):
                     )
                 else:
                     no_regex_oring_deferred_expression.append(deferred_expression)
-            # remove deferred oring regex expressions from the state
-            state.deferred = no_regex_oring_deferred_expression
-            return super().finalize_query(
-                rule,
-                self.deferred_start
-                + self.deferred_separator.join(deferred_regex_or_expressions)
-                + query,
-                index,
-                state,
-                output_format,
-            )
-        else:
-            return super().finalize_query(rule, query, index, state, output_format)
+
+            if len(deferred_regex_or_expressions) > 0:
+                # remove deferred oring regex expressions from the state
+                state.deferred = no_regex_oring_deferred_expression
+                return super().finalize_query(
+                    rule,
+                    self.deferred_start
+                    + self.deferred_separator.join(deferred_regex_or_expressions)
+                    + query,
+                    index,
+                    state,
+                    output_format,
+                )
+
+        return super().finalize_query(rule, query, index, state, output_format)
 
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
