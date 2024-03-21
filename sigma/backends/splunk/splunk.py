@@ -204,11 +204,20 @@ class SplunkBackend(TextQueryBackend):
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
+
         if cond.parent_condition_chain_contains(ConditionOR):
-            raise SigmaFeatureNotSupportedByBackendError(
-                "ORing regular expressions is not yet supported by Splunk backend",
-                source=cond.source,
+            # adding the deferred to the state
+            SplunkDeferredORRegularExpression(
+                state,
+                cond.field,
+                super().convert_condition_field_eq_val_re(cond, state),
+            ).postprocess(None, cond)
+
+            cond_true = ConditionFieldEqualsValueExpression(
+                cond.field + "Condition", SigmaString("true")
             )
+            # returning fieldX=true
+            return super().convert_condition_field_eq_val_str(cond_true, state)
         return SplunkDeferredRegularExpression(
             state, cond.field, super().convert_condition_field_eq_val_re(cond, state)
         ).postprocess(None, cond)
