@@ -32,7 +32,27 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
 
 
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
-    template = 'rex field={field} "(?<{field}Match>{value})" \n| eval {field}Condition=if(isnotnull({field}Match), "true", "false")'
+    instance_count = 0
+    default_field = "_raw"
+    operators = {
+        True: "!=",
+        False: "=",
+    }
+
+    def __init__(self, state, field, arg) -> None:
+        SplunkDeferredORRegularExpression.instance_count += 1
+        current_num_instance = str(SplunkDeferredORRegularExpression.instance_count)
+        self.template = (
+            'rex field={field} "(?<{field}Match'
+            + current_num_instance
+            + '>{value})" \n| eval {field}Condition'
+            + current_num_instance
+            + "=if(isnotnull({field}Match"
+            + current_num_instance
+            + '), "true", "false")'
+        )
+        return super().__init__(state, field, arg)
+
     default_field = "_raw"
     operators = {
         True: "!=",
@@ -214,7 +234,10 @@ class SplunkBackend(TextQueryBackend):
             ).postprocess(None, cond)
 
             cond_true = ConditionFieldEqualsValueExpression(
-                cond.field + "Condition", SigmaString("true")
+                cond.field
+                + "Condition"
+                + str(SplunkDeferredORRegularExpression.instance_count),
+                SigmaString("true"),
             )
             # returning fieldX=true
             return super().convert_condition_field_eq_val_str(cond_true, state)
