@@ -32,7 +32,7 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
 
 
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
-    instance_count = 0
+    field_counts = {}
     default_field = "_raw"
     operators = {
         True: "!=",
@@ -40,18 +40,37 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
     }
 
     def __init__(self, state, field, arg) -> None:
-        SplunkDeferredORRegularExpression.instance_count += 1
-        current_num_instance = str(SplunkDeferredORRegularExpression.instance_count)
+        SplunkDeferredORRegularExpression.add_field(field)
+        index_suffix = SplunkDeferredORRegularExpression.get_index_suffix(field)
         self.template = (
             'rex field={field} "(?<{field}Match'
-            + current_num_instance
-            + '>{value})" \n| eval {field}Condition'
-            + current_num_instance
+            + index_suffix
+            + '>{value})"\n| eval {field}Condition'
+            + index_suffix
             + "=if(isnotnull({field}Match"
-            + current_num_instance
+            + index_suffix
             + '), "true", "false")'
         )
         return super().__init__(state, field, arg)
+
+    @classmethod
+    def add_field(cls, field):
+        cls.field_counts[field] = (
+            cls.field_counts.get(field, 0) + 1
+        )  # increment the field count
+
+    @classmethod
+    def get_index_suffix(cls, field):
+
+        index_suffix = cls.field_counts.get(field, 0)
+        if index_suffix == 1:
+            # return nothing for the first field use
+            return ""
+        return str(index_suffix)
+
+    @classmethod
+    def reset(cls):
+        cls.field_counts = {}
 
 
 class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
@@ -230,7 +249,7 @@ class SplunkBackend(TextQueryBackend):
             cond_true = ConditionFieldEqualsValueExpression(
                 cond.field
                 + "Condition"
-                + str(SplunkDeferredORRegularExpression.instance_count),
+                + str(SplunkDeferredORRegularExpression.get_index_suffix(cond.field)),
                 SigmaString("true"),
             )
             # returning fieldX=true
@@ -262,11 +281,10 @@ class SplunkBackend(TextQueryBackend):
         state: ConversionState,
         output_format: str,
     ) -> Union[str, DeferredQueryExpression]:
-        # need to reset the instances count of deferred oring expression classes
-        SplunkDeferredORRegularExpression.instance_count = 0
+
         if state.has_deferred():
             deferred_regex_or_expressions = []
-            no_regex_oring_deferred_expression = []
+            no_regex_oring_deferred_expressions = []
 
             for index, deferred_expression in enumerate(state.deferred):
 
@@ -275,11 +293,14 @@ class SplunkBackend(TextQueryBackend):
                         deferred_expression.finalize_expression()
                     )
                 else:
-                    no_regex_oring_deferred_expression.append(deferred_expression)
+                    no_regex_oring_deferred_expressions.append(deferred_expression)
 
             if len(deferred_regex_or_expressions) > 0:
+                SplunkDeferredORRegularExpression.reset()  # need to reset class for potential future conversions
                 # remove deferred oring regex expressions from the state
-                state.deferred = no_regex_oring_deferred_expression
+                # as they will be taken into account by the super().finalize_query
+                state.deferred = no_regex_oring_deferred_expressions
+
                 return super().finalize_query(
                     rule,
                     self.deferred_start
