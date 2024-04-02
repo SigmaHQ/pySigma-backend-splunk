@@ -1,7 +1,8 @@
 import re
 from sigma.conversion.state import ConversionState
-from sigma.rule import SigmaRule
-from sigma.conversion.base import TextQueryBackend
+from sigma.modifiers import SigmaRegularExpression
+from sigma.rule import SigmaRule, SigmaDetection
+from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import (
     ConditionFieldEqualsValueExpression,
@@ -10,15 +11,15 @@ from sigma.conditions import (
     ConditionNOT,
     ConditionItem,
 )
-from sigma.types import SigmaCompareExpression
-from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
+from sigma.types import SigmaCompareExpression, SigmaString
+from sigma.exceptions import SigmaFeatureNotSupportedByBackendError, SigmaError
 from sigma.pipelines.splunk.splunk import (
     splunk_sysmon_process_creation_cim_mapping,
     splunk_windows_registry_cim_mapping,
     splunk_windows_file_event_cim_mapping,
 )
 import sigma
-from typing import Callable, ClassVar, Dict, List, Optional, Pattern, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
 
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
@@ -28,6 +29,48 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
         False: "=",
     }
     default_field = "_raw"
+
+
+class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
+    field_counts = {}
+    default_field = "_raw"
+    operators = {
+        True: "!=",
+        False: "=",
+    }
+
+    def __init__(self, state, field, arg) -> None:
+        SplunkDeferredORRegularExpression.add_field(field)
+        index_suffix = SplunkDeferredORRegularExpression.get_index_suffix(field)
+        self.template = (
+            'rex field={field} "(?<{field}Match'
+            + index_suffix
+            + '>{value})"\n| eval {field}Condition'
+            + index_suffix
+            + "=if(isnotnull({field}Match"
+            + index_suffix
+            + '), "true", "false")'
+        )
+        return super().__init__(state, field, arg)
+
+    @classmethod
+    def add_field(cls, field):
+        cls.field_counts[field] = (
+            cls.field_counts.get(field, 0) + 1
+        )  # increment the field count
+
+    @classmethod
+    def get_index_suffix(cls, field):
+
+        index_suffix = cls.field_counts.get(field, 0)
+        if index_suffix == 1:
+            # return nothing for the first field use
+            return ""
+        return str(index_suffix)
+
+    @classmethod
+    def reset(cls):
+        cls.field_counts = {}
 
 
 class SplunkDeferredCIDRExpression(DeferredTextQueryExpression):
@@ -111,19 +154,23 @@ class SplunkBackend(TextQueryBackend):
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
         "stats": "Correlation using stats command (more efficient, static time window)",
-        #"transaction": "Correlation using transaction command (less efficient, sliding time window",
+        # "transaction": "Correlation using transaction command (less efficient, sliding time window",
     }
     default_correlation_method: ClassVar[str] = "stats"
-    default_correlation_query: ClassVar[str] = {"stats": "{search}\n\n{aggregate}\n\n{condition}"}
+    default_correlation_query: ClassVar[str] = {
+        "stats": "{search}\n\n{aggregate}\n\n{condition}"
+    }
 
     correlation_search_single_rule_expression: ClassVar[str] = "{query}"
     correlation_search_multi_rule_expression: ClassVar[str] = "| multisearch\n{queries}"
-    correlation_search_multi_rule_query_expression: ClassVar[
-        str
-    ] = '[ search {query} | eval event_type="{ruleid}"{normalization} ]'
+    correlation_search_multi_rule_query_expression: ClassVar[str] = (
+        '[ search {query} | eval event_type="{ruleid}"{normalization} ]'
+    )
     correlation_search_multi_rule_query_expression_joiner: ClassVar[str] = "\n"
 
-    correlation_search_field_normalization_expression: ClassVar[str] = " | rename {field} as {alias}"
+    correlation_search_field_normalization_expression: ClassVar[str] = (
+        " | rename {field} as {alias}"
+    )
     correlation_search_field_normalization_expression_joiner: ClassVar[str] = ""
 
     event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
@@ -190,11 +237,23 @@ class SplunkBackend(TextQueryBackend):
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredRegularExpression:
         """Defer regular expression matching to pipelined regex command after main search expression."""
+
         if cond.parent_condition_chain_contains(ConditionOR):
-            raise SigmaFeatureNotSupportedByBackendError(
-                "ORing regular expressions is not yet supported by Splunk backend",
-                source=cond.source,
+            # adding the deferred to the state
+            SplunkDeferredORRegularExpression(
+                state,
+                cond.field,
+                super().convert_condition_field_eq_val_re(cond, state),
+            ).postprocess(None, cond)
+
+            cond_true = ConditionFieldEqualsValueExpression(
+                cond.field
+                + "Condition"
+                + str(SplunkDeferredORRegularExpression.get_index_suffix(cond.field)),
+                SigmaString("true"),
             )
+            # returning fieldX=true
+            return super().convert_condition_field_eq_val_str(cond_true, state)
         return SplunkDeferredRegularExpression(
             state, cond.field, super().convert_condition_field_eq_val_re(cond, state)
         ).postprocess(None, cond)
@@ -213,6 +272,47 @@ class SplunkBackend(TextQueryBackend):
         return SplunkDeferredCIDRExpression(
             state, cond.field, super().convert_condition_field_eq_val_cidr(cond, state)
         ).postprocess(None, cond)
+
+    def finalize_query(
+        self,
+        rule: SigmaRule,
+        query: Union[str, DeferredQueryExpression],
+        index: int,
+        state: ConversionState,
+        output_format: str,
+    ) -> Union[str, DeferredQueryExpression]:
+
+        if state.has_deferred():
+            deferred_regex_or_expressions = []
+            no_regex_oring_deferred_expressions = []
+
+            for index, deferred_expression in enumerate(state.deferred):
+
+                if type(deferred_expression) == SplunkDeferredORRegularExpression:
+                    deferred_regex_or_expressions.append(
+                        deferred_expression.finalize_expression()
+                    )
+                else:
+                    no_regex_oring_deferred_expressions.append(deferred_expression)
+
+            if len(deferred_regex_or_expressions) > 0:
+                SplunkDeferredORRegularExpression.reset()  # need to reset class for potential future conversions
+                # remove deferred oring regex expressions from the state
+                # as they will be taken into account by the super().finalize_query
+                state.deferred = no_regex_oring_deferred_expressions
+
+                return super().finalize_query(
+                    rule,
+                    self.deferred_start
+                    + self.deferred_separator.join(deferred_regex_or_expressions)
+                    + "\n| search "
+                    + query,
+                    index,
+                    state,
+                    output_format,
+                )
+
+        return super().finalize_query(rule, query, index, state, output_format)
 
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
