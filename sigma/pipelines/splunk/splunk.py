@@ -63,6 +63,17 @@ splunk_windows_file_event_cim_mapping = {
     "TargetFilename": "Filesystem.file_path",
 }
 
+splunk_web_proxy_cim_mapping = {
+    "c-uri": "Web.url",
+    "c-uri-query": "Web.uri_query",
+    "c-uri-stem": "Web.uri_path",
+    "c-useragent": "Web.http_user_agent",
+    "cs-method": "Web.http_method",
+    "cs-host": "Web.dest",
+    "cs-referrer": "Web.http_referrer",
+    "src_ip": "Web.src",
+    "dst_ip": "Web.dest_ip",
+}
 
 def splunk_windows_pipeline():
     return ProcessingPipeline(
@@ -266,6 +277,48 @@ def splunk_cim_data_model():
                 ],
             ),
             ProcessingItem(
+                identifier="splunk_dm_mapping_web_proxy_unsupported_fields",
+                transformation=DetectionItemFailureTransformation(
+                    "The Splunk Data Model Sigma backend supports only the following fields for web proxy log source: "
+                    + ",".join(splunk_web_proxy_cim_mapping.keys())
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="proxy"),
+                ],
+                field_name_conditions=[
+                    ExcludeFieldCondition(
+                        fields=splunk_web_proxy_cim_mapping.keys()
+                    )
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_web_proxy",
+                transformation=FieldMappingTransformation(
+                    splunk_web_proxy_cim_mapping
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="proxy"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_fields_web_proxy",
+                transformation=SetStateTransformation(
+                    "fields", splunk_web_proxy_cim_mapping.values()
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="proxy"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_web_proxy_data_model_set",
+                transformation=SetStateTransformation(
+                    "data_model_set", "Web.Proxy"
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="proxy"),
+                ],
+            ),
+            ProcessingItem(
                 identifier="splunk_dm_mapping_log_source_not_supported",
                 rule_condition_linking=any,
                 transformation=RuleFailureTransformation(
@@ -281,6 +334,9 @@ def splunk_cim_data_model():
                     ),
                     RuleProcessingItemAppliedCondition(
                         "splunk_dm_mapping_sysmon_file_event"
+                    ),
+                    RuleProcessingItemAppliedCondition(
+                        "splunk_dm_mapping_web_proxy"
                     ),
                 ],
             ),
