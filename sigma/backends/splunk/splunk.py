@@ -135,7 +135,7 @@ class SplunkBackend(TextQueryBackend):
         SigmaCompareExpression.CompareOperators.GTE: ">=",
     }
 
-    field_null_expression: ClassVar[str] = "{field}!=*"
+    field_null_expression: ClassVar[str] = "NOT {field}=*"
 
     convert_or_as_in: ClassVar[bool] = True
     convert_and_as_in: ClassVar[bool] = False
