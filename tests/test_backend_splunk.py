@@ -2,6 +2,7 @@ from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 import pytest
 from sigma.backends.splunk import SplunkBackend
 from sigma.collection import SigmaCollection
+from sigma.processing.pipeline import ProcessingPipeline
 from sigma.pipelines.splunk import splunk_cim_data_model
 
 
@@ -222,6 +223,43 @@ def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
             '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
         ]
     )
+
+
+def test_splunk_regex_query_explicit_or_with_nested_fields():
+
+    pipeline = ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: field_mapping
+              type: field_name_mapping
+              mapping:
+                fieldA: Event.EventData.fieldA
+                fieldB: Event.EventData.fieldB
+        """
+    )
+    splunk_backend = SplunkBackend(pipeline)
+
+    collection = SigmaCollection.from_yaml(
+        """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel1:
+                        fieldA|re: foo.*bar
+                    sel2:
+                        fieldB|re: boo.*foo
+                    condition: sel1 or sel2
+            """
+    )
+
+    assert splunk_backend.convert(collection) == [
+        '\n| rex field=Event.EventData.fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=Event.EventData.fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
+    ]
 
 
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
