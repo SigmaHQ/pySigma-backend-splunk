@@ -41,18 +41,18 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
     }
 
     def __init__(self, state, field, arg) -> None:
-        SplunkDeferredORRegularExpression.add_field(field)
-        index_suffix = SplunkDeferredORRegularExpression.get_index_suffix(field)
-        self.template = (
-            'rex field={field} "(?<{field}Match'
-            + index_suffix
-            + '>{value})"\n| eval {field}Condition'
-            + index_suffix
-            + "=if(isnotnull({field}Match"
-            + index_suffix
-            + '), "true", "false")'
+        self.add_field(field)
+        field_condition = self.get_field_condition(field)
+        field_match = self.get_field_match(field)
+        self.template = 'rex field={{field}} "(?<{field_match}>{{value}})"\n| eval {field_condition}=if(isnotnull({field_match}), "true", "false")'.format(
+            field_match=field_match, field_condition=field_condition
         )
         return super().__init__(state, field, arg)
+
+    @staticmethod
+    def clean_field(field):
+        # splunk does not allow dots in regex group, so we need to clean variables
+        return re.sub(".*\\.", "", field)
 
     @classmethod
     def add_field(cls, field):
@@ -61,13 +61,25 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         )  # increment the field count
 
     @classmethod
-    def get_index_suffix(cls, field):
-
-        index_suffix = cls.field_counts.get(field, 0)
+    def get_field_suffix(cls, field):
+        index_suffix = cls.field_counts.get(field, "")
         if index_suffix == 1:
-            # return nothing for the first field use
-            return ""
-        return str(index_suffix)
+            index_suffix = ""
+        return index_suffix
+
+    @classmethod
+    def construct_field_variable(cls, field, variable):
+        cleaned_field = cls.clean_field(field)
+        index_suffix = cls.get_field_suffix(field)
+        return f"{cleaned_field}{variable}{index_suffix}"
+
+    @classmethod
+    def get_field_match(cls, field):
+        return cls.construct_field_variable(field, "Match")
+
+    @classmethod
+    def get_field_condition(cls, field):
+        return cls.construct_field_variable(field, "Condition")
 
     @classmethod
     def reset(cls):
@@ -248,9 +260,7 @@ class SplunkBackend(TextQueryBackend):
             ).postprocess(None, cond)
 
             cond_true = ConditionFieldEqualsValueExpression(
-                cond.field
-                + "Condition"
-                + str(SplunkDeferredORRegularExpression.get_index_suffix(cond.field)),
+                SplunkDeferredORRegularExpression.get_field_condition(cond.field),
                 SigmaString("true"),
             )
             # returning fieldX=true
@@ -381,13 +391,11 @@ class SplunkBackend(TextQueryBackend):
                     cim_fields = " ".join(
                         splunk_sysmon_process_creation_cim_mapping.values()
                     )
-                    
+
         elif rule.logsource.category == "proxy":
             data_model = "Web"
             data_set = "Proxy"
-            cim_fields = " ".join(
-                splunk_web_proxy_cim_mapping.values()
-            )
+            cim_fields = " ".join(splunk_web_proxy_cim_mapping.values())
 
         try:
             data_model_set = state.processing_state["data_model_set"]
