@@ -119,6 +119,7 @@ class SplunkBackend(TextQueryBackend):
     )
     group_expression: ClassVar[str] = "({expr})"
 
+    bool_values = {True: "true", False: "false"}
     or_token: ClassVar[str] = "OR"
     and_token: ClassVar[str] = " "
     not_token: ClassVar[str] = "NOT"
