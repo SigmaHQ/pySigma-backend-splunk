@@ -86,6 +86,15 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         cls.field_counts = {}
 
 
+class SplunkDeferredFieldRefExpression(DeferredTextQueryExpression):
+    template = "where {op}'{field}'='{value}'"
+    operators = {
+        True: "NOT ",
+        False: "",
+    }
+    default_field = "_raw"
+
+
 class SplunkBackend(TextQueryBackend):
     """Splunk SPL backend."""
 
@@ -138,6 +147,7 @@ class SplunkBackend(TextQueryBackend):
         SigmaCompareExpression.CompareOperators.GTE: ">=",
     }
 
+    field_equals_field_expression: ClassVar[str] = "{field2}"
     field_null_expression: ClassVar[str] = "NOT {field}=*"
 
     convert_or_as_in: ClassVar[bool] = True
