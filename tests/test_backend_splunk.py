@@ -328,6 +328,52 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
     )
 
 
+def test_splunk_fieldref_query(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|fieldref: fieldD
+                    fieldB: foo
+                    fieldC: bar
+                condition: sel
+        """
+            )
+        )
+        == ["fieldB=\"foo\" fieldC=\"bar\"\n| where 'fieldA'='fieldD'"]
+    )
+
+
+def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
+    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing FieldRef"):
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldA|fieldref:
+                            - fieldD
+                            - fieldE
+                        fieldB: foo
+                        fieldC: bar
+                    condition: sel
+            """
+            )
+        )
+
+
 def test_splunk_fields_output(splunk_backend: SplunkBackend):
     rule = SigmaCollection.from_yaml(
         """

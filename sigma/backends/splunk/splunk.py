@@ -271,6 +271,21 @@ class SplunkBackend(TextQueryBackend):
             state, cond.field, super().convert_condition_field_eq_val_re(cond, state)
         ).postprocess(None, cond)
 
+    def convert_condition_field_eq_field(
+        self,
+        cond: ConditionFieldEqualsValueExpression,
+        state: "sigma.conversion.state.ConversionState",
+    ) -> SplunkDeferredFieldRefExpression:
+        """Defer FieldRef matching to pipelined with `where` command after main search expression."""
+        if cond.parent_condition_chain_contains(ConditionOR):
+            raise SigmaFeatureNotSupportedByBackendError(
+                "ORing FieldRef matching is not yet supported by Splunk backend",
+                source=cond.source,
+            )
+        return SplunkDeferredFieldRefExpression(
+            state, cond.field, super().convert_condition_field_eq_field(cond, state)
+        ).postprocess(None, cond)
+
     def finalize_query(
         self,
         rule: SigmaRule,
