@@ -307,9 +307,10 @@ def test_splunk_cidr_query(splunk_backend: SplunkBackend):
 
 
 def test_splunk_cidr_or(splunk_backend: SplunkBackend):
-    assert splunk_backend.convert(
-        SigmaCollection.from_yaml(
-            """
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
                 title: Test
                 status: test
                 logsource:
@@ -324,7 +325,9 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
                         fieldC: bar
                     condition: sel
             """
+            )
         )
+        == ['fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8" fieldB="foo" fieldC="bar"']
     )
 
 
