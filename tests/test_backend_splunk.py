@@ -302,15 +302,14 @@ def test_splunk_cidr_query(splunk_backend: SplunkBackend):
         """
             )
         )
-        == ['fieldB="foo" fieldC="bar"\n| where cidrmatch("192.168.0.0/16", fieldA)']
+        == ['fieldA="192.168.0.0/16" fieldB="foo" fieldC="bar"']
     )
 
 
 def test_splunk_cidr_or(splunk_backend: SplunkBackend):
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing CIDR"):
-        splunk_backend.convert(
-            SigmaCollection.from_yaml(
-                """
+    assert splunk_backend.convert(
+        SigmaCollection.from_yaml(
+            """
                 title: Test
                 status: test
                 logsource:
@@ -325,8 +324,8 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
                         fieldC: bar
                     condition: sel
             """
-            )
         )
+    )
 
 
 def test_splunk_fields_output(splunk_backend: SplunkBackend):
