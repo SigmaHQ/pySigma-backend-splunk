@@ -2,6 +2,7 @@ from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 import pytest
 from sigma.backends.splunk import SplunkBackend
 from sigma.collection import SigmaCollection
+from sigma.processing.pipeline import ProcessingPipeline
 from sigma.pipelines.splunk import splunk_cim_data_model
 
 
@@ -224,6 +225,43 @@ def test_splunk_regex_query_explicit_or(splunk_backend: SplunkBackend):
     )
 
 
+def test_splunk_regex_query_explicit_or_with_nested_fields():
+
+    pipeline = ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: field_mapping
+              type: field_name_mapping
+              mapping:
+                fieldA: Event.EventData.fieldA
+                fieldB: Event.EventData.fieldB
+        """
+    )
+    splunk_backend = SplunkBackend(pipeline)
+
+    collection = SigmaCollection.from_yaml(
+        """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel1:
+                        fieldA|re: foo.*bar
+                    sel2:
+                        fieldB|re: boo.*foo
+                    condition: sel1 or sel2
+            """
+    )
+
+    assert splunk_backend.convert(collection) == [
+        '\n| rex field=Event.EventData.fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=Event.EventData.fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
+    ]
+
+
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
     assert (
         splunk_backend.convert(
@@ -264,12 +302,12 @@ def test_splunk_cidr_query(splunk_backend: SplunkBackend):
         """
             )
         )
-        == ['fieldB="foo" fieldC="bar"\n| where cidrmatch("192.168.0.0/16", fieldA)']
+        == ['fieldA="192.168.0.0/16" fieldB="foo" fieldC="bar"']
     )
 
 
 def test_splunk_cidr_or(splunk_backend: SplunkBackend):
-    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing CIDR"):
+    assert (
         splunk_backend.convert(
             SigmaCollection.from_yaml(
                 """
@@ -283,6 +321,54 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
                         fieldA|cidr:
                             - 192.168.0.0/16
                             - 10.0.0.0/8
+                        fieldB: foo
+                        fieldC: bar
+                    condition: sel
+            """
+            )
+        )
+        == ['fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8" fieldB="foo" fieldC="bar"']
+    )
+
+
+def test_splunk_fieldref_query(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|fieldref: fieldD
+                    fieldB: foo
+                    fieldC: bar
+                condition: sel
+        """
+            )
+        )
+        == ["fieldB=\"foo\" fieldC=\"bar\"\n| where 'fieldA'='fieldD'"]
+    )
+
+
+def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
+    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="ORing FieldRef"):
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldA|fieldref:
+                            - fieldD
+                            - fieldE
                         fieldB: foo
                         fieldC: bar
                     condition: sel
