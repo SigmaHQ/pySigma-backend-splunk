@@ -376,6 +376,27 @@ def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
             )
         )
 
+def test_splunk_exists(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldA|exists: yes
+                        fieldB|exists: no
+                    condition: sel
+            """
+            )
+        )
+        == ['fieldA=* NOT fieldB=*']
+    )
+
 
 def test_splunk_fields_output(splunk_backend: SplunkBackend):
     rule = SigmaCollection.from_yaml(
