@@ -157,6 +157,8 @@ class SplunkBackend(TextQueryBackend):
     field_in_list_expression: ClassVar[str] = "{field} {op} ({list})"
     or_in_operator: ClassVar[Optional[str]] = "IN"
     list_separator: ClassVar[str] = ", "
+    field_exists_expression: ClassVar[str] = "{field}=*"
+    field_not_exists_expression: ClassVar[str] = "NOT {field}=*"
 
     unbound_value_str_expression: ClassVar[str] = "{value}"
     unbound_value_num_expression: ClassVar[str] = "{value}"
