@@ -112,7 +112,7 @@ correlation:
             base_rule_1: fieldC
             base_rule_2: fieldD
     group-by:
-        - fieldC
+        - field
     timespan: 15m
 """
     )
@@ -122,6 +122,59 @@ correlation:
 [ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" | rename fieldD as field ]
 
 | bin _time span=15m
-| stats dc(event_type) as event_type_count by _time fieldC
+| stats dc(event_type) as event_type_count by _time field
 
 | search event_type_count >= 2"""]
+
+def test_event_count_correlation_rule_with_normalization(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule 1
+name: base_rule_1
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Base rule 2
+name: base_rule_2
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value3
+        fieldB: value4
+    condition: selection
+---
+title: Event count correlation rule
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule_1
+        - base_rule_2
+    aliases:
+        field:
+            base_rule_1: fieldC
+            base_rule_2: fieldD
+    group-by:
+        - field
+    condition:
+        gte: 10
+    timespan: 15m
+"""
+    )
+    assert splunk_backend.convert(correlation_rule) == [
+        """| multisearch
+[ search fieldA="value1" fieldB="value2" | eval event_type="base_rule_1" | rename fieldC as field ]
+[ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" | rename fieldD as field ]
+
+| bin _time span=15m
+| stats count as event_count by _time field
+
+| search event_count >= 10"""]
