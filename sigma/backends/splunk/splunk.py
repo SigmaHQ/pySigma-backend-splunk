@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
@@ -10,6 +11,7 @@ from sigma.conditions import (
     ConditionAND,
     ConditionNOT,
     ConditionItem,
+    ConditionType,
 )
 from sigma.types import SigmaCompareExpression, SigmaString
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError, SigmaError
@@ -21,6 +23,12 @@ from sigma.pipelines.splunk.splunk import (
 )
 import sigma
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
+
+@dataclass
+class DeferredSimpleExpression(DeferredQueryExpression):
+  content : str
+  def finalize_expression(self) -> Any:
+      return self.content
 
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
@@ -272,7 +280,20 @@ class SplunkBackend(TextQueryBackend):
         return SplunkDeferredRegularExpression(
             state, cond.field, super().convert_condition_field_eq_val_re(cond, state)
         ).postprocess(None, cond)
-
+    
+    def convert_condition(self, cond: ConditionType, state: ConversionState) -> Any:
+        if isinstance(cond, ConditionNOT):
+            if not cond.parent_condition_chain_contains(ConditionOR):
+                return DeferredSimpleExpression(state,
+                    self.convert_condition_not(cond, state)
+                    ).postprocess(None, cond)
+        elif isinstance(cond, ConditionFieldEqualsValueExpression):
+            if not (cond.parent_condition_chain_contains(ConditionOR)) and not(cond.parent_condition_chain_contains(ConditionNOT)):
+                return DeferredSimpleExpression(state,
+                    self.convert_condition_field_eq_val(cond, state)
+                    ).postprocess(None, cond)
+        return super().convert_condition(cond, state)
+    
     def convert_condition_field_eq_field(
         self,
         cond: ConditionFieldEqualsValueExpression,
@@ -296,29 +317,32 @@ class SplunkBackend(TextQueryBackend):
         state: ConversionState,
         output_format: str,
     ) -> Union[str, DeferredQueryExpression]:
-
+        
         if state.has_deferred():
             deferred_regex_or_expressions = []
             no_regex_oring_deferred_expressions = []
-
+            start_expressions = []
             for index, deferred_expression in enumerate(state.deferred):
 
                 if type(deferred_expression) == SplunkDeferredORRegularExpression:
                     deferred_regex_or_expressions.append(
                         deferred_expression.finalize_expression()
                     )
+                elif type(deferred_expression) == DeferredSimpleExpression:
+                    start_expressions.append(deferred_expression.finalize_expression())
                 else:
                     no_regex_oring_deferred_expressions.append(deferred_expression)
+            start_part = f"{' '.join(start_expressions)}"
 
             if len(deferred_regex_or_expressions) > 0:
                 SplunkDeferredORRegularExpression.reset()  # need to reset class for potential future conversions
                 # remove deferred oring regex expressions from the state
                 # as they will be taken into account by the super().finalize_query
                 state.deferred = no_regex_oring_deferred_expressions
-
                 return super().finalize_query(
                     rule,
-                    self.deferred_start
+                    start_part
+                    + self.deferred_start
                     + self.deferred_separator.join(deferred_regex_or_expressions)
                     + "\n| search "
                     + query,
@@ -326,6 +350,12 @@ class SplunkBackend(TextQueryBackend):
                     state,
                     output_format,
                 )
+            else :
+                state.deferred = []
+                if query!= "":
+                    query = start_part + " " + query
+                else :
+                    query = start_part
 
         return super().finalize_query(rule, query, index, state, output_format)
 
