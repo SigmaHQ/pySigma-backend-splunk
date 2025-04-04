@@ -286,7 +286,9 @@ class SplunkBackend(TextQueryBackend):
 
     def convert_condition(self, cond: ConditionType, state: ConversionState) -> Any:
         if isinstance(cond, ConditionOR):
-            if self.decide_convert_condition_as_in_expression(cond, state) and not cond.parent_condition_chain_contains(ConditionOR):
+            if self.decide_convert_condition_as_in_expression(
+                cond, state
+            ) and not cond.parent_condition_chain_contains(ConditionOR):
                 return DeferredSimpleExpression(
                     state, self.convert_condition_as_in_expression(cond, state)
                 ).postprocess(None, cond)
@@ -376,20 +378,21 @@ class SplunkBackend(TextQueryBackend):
                 )
             else:
                 if isinstance(query, DeferredQueryExpression):
-                    if start_part == "":
-                        query = self.deferred_only_query
-                    else:
+                    if start_part != "":
                         query = start_part
-                elif query != "":
-                    query = start_part + " " + query
+                    else:
+                        pass
                 else:
-                    query = start_part
+                    query = " ".join(
+                        [elem for elem in [start_part, query] if elem != ""]
+                    )
+
         return super().finalize_query(rule, query, index, state, output_format)
 
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> str:
-        if not rule._backreferences: # if rule is not part of a correlation rule
+        if not rule._backreferences:  # if rule is not part of a correlation rule
             table_fields = " | table " + ",".join(rule.fields) if rule.fields else ""
             return query + table_fields
         else:
