@@ -286,7 +286,7 @@ class SplunkBackend(TextQueryBackend):
 
     def convert_condition(self, cond: ConditionType, state: ConversionState) -> Any:
         if isinstance(cond, ConditionOR):
-            if self.decide_convert_condition_as_in_expression(cond, state):
+            if self.decide_convert_condition_as_in_expression(cond, state) and not cond.parent_condition_chain_contains(ConditionOR):
                 return DeferredSimpleExpression(
                     state, self.convert_condition_as_in_expression(cond, state)
                 ).postprocess(None, cond)
