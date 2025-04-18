@@ -395,7 +395,7 @@ def test_splunk_exists(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['fieldA=* NOT fieldB=*']
+        == ["fieldA=* NOT fieldB=*"]
     )
 
 
