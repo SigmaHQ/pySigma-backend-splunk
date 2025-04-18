@@ -1,6 +1,7 @@
 from test_backend_splunk import splunk_backend
 from sigma.collection import SigmaCollection
 
+
 def test_event_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -38,6 +39,7 @@ correlation:
 | search event_count >= 10"""
     ]
 
+
 def test_value_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -74,6 +76,7 @@ correlation:
 
 | search value_count < 10"""
     ]
+
 
 def test_temporal_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
@@ -124,4 +127,5 @@ correlation:
 | bin _time span=15m
 | stats dc(event_type) as event_type_count by _time fieldC
 
-| search event_type_count >= 2"""]
+| search event_type_count >= 2"""
+    ]

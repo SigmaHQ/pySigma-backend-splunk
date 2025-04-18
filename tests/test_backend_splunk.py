@@ -194,7 +194,7 @@ def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
             )
         )
         == [
-            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldA "(?<fieldAMatch2>boo.*foo)"\n| eval fieldACondition2=if(isnotnull(fieldAMatch2), "true", "false")\n| search fieldACondition="true" OR fieldACondition2="true" fieldB="foo" fieldC="bar"'
+            'fieldB="foo" fieldC="bar"\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldA "(?<fieldAMatch2>boo.*foo)"\n| eval fieldACondition2=if(isnotnull(fieldAMatch2), "true", "false")\n| search fieldACondition="true" OR fieldACondition2="true"'
         ]
     )
 
@@ -327,7 +327,7 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8" fieldB="foo" fieldC="bar"']
+        == ['fieldB="foo" fieldC="bar" fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8"']
     )
 
 
@@ -376,6 +376,7 @@ def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
             )
         )
 
+
 def test_splunk_exists(splunk_backend: SplunkBackend):
     assert (
         splunk_backend.convert(
@@ -394,7 +395,7 @@ def test_splunk_exists(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['fieldA=* NOT fieldB=*']
+        == ["fieldA=* NOT fieldB=*"]
     )
 
 
