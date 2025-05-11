@@ -408,12 +408,18 @@ class SplunkBackend(TextQueryBackend):
                 "No data model specified by processing pipeline"
             )
 
-        try:
-            data_set = data_model_set.split(".")[1]
-        except IndexError:
+        if not data_model_set:
             raise SigmaFeatureNotSupportedByBackendError(
                 "No data set specified by processing pipeline"
             )
+
+        if "." in data_model_set:
+            parts = data_model_set.split(".")
+            if len(parts) != 2 or not all(parts):
+                raise SigmaFeatureNotSupportedByBackendError(
+                    "Expected format 'data_model.data_set', but got: {}".format(data_model_set)
+                )
+            data_set = parts[1]
 
         try:
             fields = " ".join(state.processing_state["fields"])
