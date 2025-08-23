@@ -161,7 +161,7 @@ class SplunkBackend(TextQueryBackend):
 
     field_equals_field_expression: ClassVar[str] = "{field2}"
     field_null_expression: ClassVar[str] = "NOT {field}=*"
-
+    finalize_correlation_subqueries = True
     convert_or_as_in: ClassVar[bool] = True
     convert_and_as_in: ClassVar[bool] = False
     in_expressions_allow_wildcards: ClassVar[bool] = True
