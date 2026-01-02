@@ -75,6 +75,20 @@ splunk_web_proxy_cim_mapping = {
     "dst_ip": "Web.dest_ip",
 }
 
+splunk_dns_cim_mapping = {
+    "answer": "DNS.answer",
+    "dst_ip": "DNS.dest",
+    "dst_port": "DNS.dest_port",
+    "message_type": "DNS.message_type",
+    "query_type": "DNS.query_type",
+    "query": "DNS.query",
+    "record_type": "DNS.record_type",
+    "reply_code": "DNS.reply_code",
+    "src_ip": "DNS.src",
+    "src_port": "DNS.src_port",
+    "ttl": "DNS.ttl",
+}
+
 def splunk_windows_pipeline():
     return ProcessingPipeline(
         name="Splunk Windows log source conditions",
@@ -319,6 +333,49 @@ def splunk_cim_data_model():
                 ],
             ),
             ProcessingItem(
+                identifier="splunk_dm_mapping_dns_unsupported_fields",
+                transformation=DetectionItemFailureTransformation(
+                    "The Splunk Data Model Sigma backend supports only the following fields for DNS log source: "
+                    + ",".join(list(splunk_dns_cim_mapping.keys()))
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="dns"),
+                ],
+                field_name_conditions=[
+                    ExcludeFieldCondition(
+                        fields=list(splunk_dns_cim_mapping.keys())
+                    )
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_dns",
+                transformation=FieldMappingTransformation(
+                    splunk_dns_cim_mapping
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="dns"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_fields_dns",
+                transformation=SetStateTransformation(
+                    "fields", splunk_dns_cim_mapping.values()
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="dns"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_dns_data_model_set",
+                transformation=SetStateTransformation(
+                    "data_model_set", "Network_Resolution.DNS"
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="dns"),
+                ],
+            ),
+
+            ProcessingItem(
                 identifier="splunk_dm_mapping_log_source_not_supported",
                 rule_condition_linking=any,
                 transformation=RuleFailureTransformation(
@@ -337,6 +394,9 @@ def splunk_cim_data_model():
                     ),
                     RuleProcessingItemAppliedCondition(
                         "splunk_dm_mapping_web_proxy"
+                    ),
+                    RuleProcessingItemAppliedCondition(
+                        "splunk_dm_mapping_dns"
                     ),
                 ],
             ),
