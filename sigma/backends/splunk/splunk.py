@@ -18,6 +18,7 @@ from sigma.pipelines.splunk.splunk import (
     splunk_windows_registry_cim_mapping,
     splunk_windows_file_event_cim_mapping,
     splunk_web_proxy_cim_mapping,
+    splunk_dns_cim_mapping,
 )
 import sigma
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
@@ -392,6 +393,11 @@ class SplunkBackend(TextQueryBackend):
             data_model = "Web"
             data_set = "Proxy"
             cim_fields = " ".join(splunk_web_proxy_cim_mapping.values())
+
+        elif rule.logsource.category == "dns":
+            data_model = "Network_Resolution"
+            data_set = "DNS"
+            cim_fields = " ".join(splunk_dns_cim_mapping.values())
 
         try:
             data_model_set = state.processing_state["data_model_set"]
