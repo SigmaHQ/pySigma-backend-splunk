@@ -394,10 +394,11 @@ class SplunkBackend(TextQueryBackend):
             data_set = "Proxy"
             cim_fields = " ".join(splunk_web_proxy_cim_mapping.values())
 
-        elif rule.logsource.category == "dns":
-            data_model = "Network_Resolution"
-            data_set = "DNS"
-            cim_fields = " ".join(splunk_dns_cim_mapping.values())
+        elif rule.logsource.category == "network":
+            if rule.logsource.service == "dns":
+                data_model = "Network_Resolution"
+                data_set = "DNS"
+                cim_fields = " ".join(splunk_dns_cim_mapping.values())
 
         try:
             data_model_set = state.processing_state["data_model_set"]

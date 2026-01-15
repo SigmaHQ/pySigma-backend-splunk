@@ -76,17 +76,17 @@ splunk_web_proxy_cim_mapping = {
 }
 
 splunk_dns_cim_mapping = {
-    "answer": "DNS.answer",
-    "dst_ip": "DNS.dest",
-    "dst_port": "DNS.dest_port",
-    "message_type": "DNS.message_type",
-    "query_type": "DNS.query_type",
-    "query": "DNS.query",
-    "record_type": "DNS.record_type",
-    "reply_code": "DNS.reply_code",
-    "src_ip": "DNS.src",
-    "src_port": "DNS.src_port",
-    "ttl": "DNS.ttl",
+    "destination.ip": "DNS.dest",
+    "destination.port": "DNS.dest_port",
+    "dns.answers.name": "DNS.answer",
+    "dns.answers.ttl": "DNS.ttl",
+    "dns.answers.type": "DNS.record_type",
+    "dns.id": "DNS.transaction_id",
+    "dns.question.name": "DNS.query",
+    "dns.question.type": "DNS.record_type",
+    "dns.response.code": "DNS.reply_code_id",
+    "source.ip": "DNS.src",
+    "source.port": "DNS.src_port",
 }
 
 def splunk_windows_pipeline():
@@ -300,16 +300,12 @@ def splunk_cim_data_model():
                     LogsourceCondition(category="proxy"),
                 ],
                 field_name_conditions=[
-                    ExcludeFieldCondition(
-                        fields=splunk_web_proxy_cim_mapping.keys()
-                    )
+                    ExcludeFieldCondition(fields=splunk_web_proxy_cim_mapping.keys())
                 ],
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_web_proxy",
-                transformation=FieldMappingTransformation(
-                    splunk_web_proxy_cim_mapping
-                ),
+                transformation=FieldMappingTransformation(splunk_web_proxy_cim_mapping),
                 rule_conditions=[
                     LogsourceCondition(category="proxy"),
                 ],
@@ -325,9 +321,7 @@ def splunk_cim_data_model():
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_web_proxy_data_model_set",
-                transformation=SetStateTransformation(
-                    "data_model_set", "Web.Proxy"
-                ),
+                transformation=SetStateTransformation("data_model_set", "Web.Proxy"),
                 rule_conditions=[
                     LogsourceCondition(category="proxy"),
                 ],
@@ -339,21 +333,17 @@ def splunk_cim_data_model():
                     + ",".join(list(splunk_dns_cim_mapping.keys()))
                 ),
                 rule_conditions=[
-                    LogsourceCondition(category="dns"),
+                    LogsourceCondition(category="network", service="dns"),
                 ],
                 field_name_conditions=[
-                    ExcludeFieldCondition(
-                        fields=list(splunk_dns_cim_mapping.keys())
-                    )
+                    ExcludeFieldCondition(fields=list(splunk_dns_cim_mapping.keys()))
                 ],
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_dns",
-                transformation=FieldMappingTransformation(
-                    splunk_dns_cim_mapping
-                ),
+                transformation=FieldMappingTransformation(splunk_dns_cim_mapping),
                 rule_conditions=[
-                    LogsourceCondition(category="dns"),
+                    LogsourceCondition(category="network", service="dns"),
                 ],
             ),
             ProcessingItem(
@@ -362,7 +352,7 @@ def splunk_cim_data_model():
                     "fields", splunk_dns_cim_mapping.values()
                 ),
                 rule_conditions=[
-                    LogsourceCondition(category="dns"),
+                    LogsourceCondition(category="network", service="dns"),
                 ],
             ),
             ProcessingItem(
@@ -371,10 +361,9 @@ def splunk_cim_data_model():
                     "data_model_set", "Network_Resolution.DNS"
                 ),
                 rule_conditions=[
-                    LogsourceCondition(category="dns"),
+                    LogsourceCondition(category="network", service="dns"),
                 ],
             ),
-
             ProcessingItem(
                 identifier="splunk_dm_mapping_log_source_not_supported",
                 rule_condition_linking=any,
