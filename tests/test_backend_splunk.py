@@ -731,6 +731,67 @@ Processes.parent_process_path Processes.parent_process_guid Processes.parent_pro
         )
     ]
 
+def test_splunk_data_model_dns_query():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: network
+    service: dns
+detection:
+    sel:
+        destination.ip: 2001:db8::1
+        destination.port: 53
+        dns.id: 1
+        dns.question.name: example.com
+        dns.question.type: AAAA
+        source.ip: 2001:db8::2
+        source.port: 53
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Network_Resolution.DNS where
+DNS.dest="2001:db8::1" DNS.dest_port=53 DNS.transaction_id=1 DNS.query="example.com" DNS.query_type="AAAA" DNS.src="2001:db8::2" DNS.src_port=53
+by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id DNS.query DNS.query_type DNS.reply_code_id DNS.src DNS.src_port
+| `drop_dm_object_name(DNS)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) """.replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_dns_answer():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: network
+    service: dns
+detection:
+    sel:
+        destination.ip: 2001:db8::1
+        destination.port: 53
+        dns.id: 1
+        dns.answers.name: cname.example.com
+        dns.answers.type: CNAME
+        dns.answers.ttl: 600
+        source.ip: 2001:db8::2
+        source.port: 53
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Network_Resolution.DNS where
+DNS.dest="2001:db8::1" DNS.dest_port=53 DNS.transaction_id=1 DNS.answer="cname.example.com" DNS.record_type="CNAME" DNS.ttl=600 DNS.src="2001:db8::2" DNS.src_port=53
+by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id DNS.query DNS.query_type DNS.reply_code_id DNS.src DNS.src_port
+| `drop_dm_object_name(DNS)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) """.replace(
+            "\n", " "
+        )
+    ]
 
 def test_splunk_data_model_no_data_model_specified():
     splunk_backend = SplunkBackend()

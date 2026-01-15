@@ -75,6 +75,20 @@ splunk_web_proxy_cim_mapping = {
     "dst_ip": "Web.dest_ip",
 }
 
+splunk_dns_cim_mapping = {
+    "destination.ip": "DNS.dest",
+    "destination.port": "DNS.dest_port",
+    "dns.answers.name": "DNS.answer",
+    "dns.answers.ttl": "DNS.ttl",
+    "dns.answers.type": "DNS.record_type",
+    "dns.id": "DNS.transaction_id",
+    "dns.question.name": "DNS.query",
+    "dns.question.type": "DNS.query_type",
+    "dns.response.code": "DNS.reply_code_id",
+    "source.ip": "DNS.src",
+    "source.port": "DNS.src_port",
+}
+
 def splunk_windows_pipeline():
     return ProcessingPipeline(
         name="Splunk Windows log source conditions",
@@ -286,16 +300,12 @@ def splunk_cim_data_model():
                     LogsourceCondition(category="proxy"),
                 ],
                 field_name_conditions=[
-                    ExcludeFieldCondition(
-                        fields=splunk_web_proxy_cim_mapping.keys()
-                    )
+                    ExcludeFieldCondition(fields=splunk_web_proxy_cim_mapping.keys())
                 ],
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_web_proxy",
-                transformation=FieldMappingTransformation(
-                    splunk_web_proxy_cim_mapping
-                ),
+                transformation=FieldMappingTransformation(splunk_web_proxy_cim_mapping),
                 rule_conditions=[
                     LogsourceCondition(category="proxy"),
                 ],
@@ -311,11 +321,47 @@ def splunk_cim_data_model():
             ),
             ProcessingItem(
                 identifier="splunk_dm_mapping_web_proxy_data_model_set",
-                transformation=SetStateTransformation(
-                    "data_model_set", "Web.Proxy"
-                ),
+                transformation=SetStateTransformation("data_model_set", "Web.Proxy"),
                 rule_conditions=[
                     LogsourceCondition(category="proxy"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_dns_unsupported_fields",
+                transformation=DetectionItemFailureTransformation(
+                    "The Splunk Data Model Sigma backend supports only the following fields for DNS log source: "
+                    + ",".join(list(splunk_dns_cim_mapping.keys()))
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="network", service="dns"),
+                ],
+                field_name_conditions=[
+                    ExcludeFieldCondition(fields=list(splunk_dns_cim_mapping.keys()))
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_dns",
+                transformation=FieldMappingTransformation(splunk_dns_cim_mapping),
+                rule_conditions=[
+                    LogsourceCondition(category="network", service="dns"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_fields_dns",
+                transformation=SetStateTransformation(
+                    "fields", splunk_dns_cim_mapping.values()
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="network", service="dns"),
+                ],
+            ),
+            ProcessingItem(
+                identifier="splunk_dm_mapping_dns_data_model_set",
+                transformation=SetStateTransformation(
+                    "data_model_set", "Network_Resolution.DNS"
+                ),
+                rule_conditions=[
+                    LogsourceCondition(category="network", service="dns"),
                 ],
             ),
             ProcessingItem(
@@ -337,6 +383,9 @@ def splunk_cim_data_model():
                     ),
                     RuleProcessingItemAppliedCondition(
                         "splunk_dm_mapping_web_proxy"
+                    ),
+                    RuleProcessingItemAppliedCondition(
+                        "splunk_dm_mapping_dns"
                     ),
                 ],
             ),
