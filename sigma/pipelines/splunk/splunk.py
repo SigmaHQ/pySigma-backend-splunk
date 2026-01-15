@@ -83,7 +83,7 @@ splunk_dns_cim_mapping = {
     "dns.answers.type": "DNS.record_type",
     "dns.id": "DNS.transaction_id",
     "dns.question.name": "DNS.query",
-    "dns.question.type": "DNS.record_type",
+    "dns.question.type": "DNS.query_type",
     "dns.response.code": "DNS.reply_code_id",
     "source.ip": "DNS.src",
     "source.port": "DNS.src_port",
