@@ -199,6 +199,9 @@ class SplunkBackend(TextQueryBackend):
     temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count by _time{groupby}",
     }
+    temporal_extended_aggregation_expression: ClassVar[Dict[str, str]] = {
+        "stats": "| bin _time span={timespan}\n| stats values(event_type) as event_types by _time{groupby}",
+    }
 
     timespan_mapping: ClassVar[Dict[str, str]] = {
         "M": "mon",
@@ -216,6 +219,13 @@ class SplunkBackend(TextQueryBackend):
     }
     temporal_condition_expression: ClassVar[Dict[str, str]] = {
         "stats": "| search event_type_count {op} {count}"
+    }
+    temporal_extended_condition_expression: ClassVar[dict[str, str]] = {
+        "stats": "| search {extended_condition}"
+    }
+    
+    extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
+        "stats": 'event_types="{ruleid}"'
     }
 
     def __init__(

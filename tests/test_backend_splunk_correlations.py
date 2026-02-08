@@ -125,3 +125,64 @@ correlation:
 | stats dc(event_type) as event_type_count by _time fieldC
 
 | search event_type_count >= 2"""]
+
+def test_temporal_extended_correlation_rule_stats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule 1
+name: base_rule_1
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Base rule 2
+name: base_rule_2
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value3
+        fieldB: value4
+    condition: selection
+---
+title: Base rule 3
+name: base_rule_3
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value5
+        fieldB: value6
+    condition: selection
+---
+title: Temporal correlation rule
+status: test
+correlation:
+    type: temporal
+    aliases:
+        field:
+            base_rule_1: fieldC
+            base_rule_2: fieldD
+    group-by:
+        - fieldC
+    condition: base_rule_1 and base_rule_2 and not base_rule_3
+    timespan: 15m
+"""
+    )
+    assert splunk_backend.convert(correlation_rule) == [
+        """| multisearch
+[ search fieldA="value1" fieldB="value2" | eval event_type="base_rule_1" | rename fieldC as field ]
+[ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" | rename fieldD as field ]
+[ search fieldA="value5" fieldB="value6" | eval event_type="base_rule_3" ]
+
+| bin _time span=15m
+| stats values(event_type) as event_types by _time fieldC
+
+| search event_types="base_rule_1"   event_types="base_rule_2"   NOT event_types="base_rule_3\""""]
