@@ -3,16 +3,14 @@ from sigma.conversion.state import ConversionState
 from sigma.rule import SigmaRule
 from sigma.conversion.base import TextQueryBackend
 from sigma.conditions import (
-    ConditionFieldEqualsValueExpression,
-    ConditionOR,
     ConditionAND,
     ConditionNOT,
+    ConditionOR,
     ConditionItem,
 )
-from sigma.types import SigmaCompareExpression, SigmaString
-from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
+from sigma.types import SigmaCompareExpression
 import sigma
-from typing import Any, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
+from typing import ClassVar, Dict, List, Optional, Pattern, Tuple
 
 
 class SplunkSPL2Backend(TextQueryBackend):
