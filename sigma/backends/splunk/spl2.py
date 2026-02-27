@@ -1,16 +1,17 @@
 import re
 from sigma.conversion.state import ConversionState
-from sigma.rule import SigmaRule
-from sigma.conversion.base import TextQueryBackend
+from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conditions import (
     ConditionAND,
     ConditionNOT,
     ConditionOR,
     ConditionItem,
+    ConditionValueExpression,
 )
-from sigma.types import SigmaCompareExpression
+from sigma.rule import SigmaRule
+from sigma.types import SigmaCompareExpression, SigmaString
 import sigma
-from typing import ClassVar, Dict, List, Optional, Pattern, Tuple
+from typing import ClassVar, Dict, List, Optional, Pattern, Tuple, Union
 
 
 class SplunkSPL2Backend(TextQueryBackend):
@@ -50,8 +51,9 @@ class SplunkSPL2Backend(TextQueryBackend):
     re_expression: ClassVar[str] = "match({field}, /(?i){regex}/)"
     re_escape_char: ClassVar[str] = "\\"
     re_escape: ClassVar[Tuple[str]] = ("/",)
+    re_flag_prefix: ClassVar[bool] = False
 
-    cidr_expression: ClassVar[str] = '{field}="{value}"'
+    cidr_expression: ClassVar[str] = 'cidrmatch("{value}", {field})'
 
     compare_op_expression: ClassVar[str] = "{field}{operator}{value}"
     compare_operators: ClassVar[Dict[SigmaCompareExpression.CompareOperators, str]] = {
@@ -73,9 +75,9 @@ class SplunkSPL2Backend(TextQueryBackend):
     field_exists_expression: ClassVar[str] = "{field} IS NOT NULL"
     field_not_exists_expression: ClassVar[str] = "{field} IS NULL"
 
-    unbound_value_str_expression: ClassVar[str] = "{value}"
-    unbound_value_num_expression: ClassVar[str] = "{value}"
-    unbound_value_re_expression: ClassVar[str] = "{value}"
+    unbound_value_str_expression: ClassVar[str] = '_raw LIKE "%{value}%"'
+    unbound_value_num_expression: ClassVar[str] = '_raw LIKE "%{value}%"'
+    unbound_value_re_expression: ClassVar[str] = 'match(_raw, /{value}/)'
 
     deferred_start: ClassVar[str] = "\n| "
     deferred_separator: ClassVar[str] = "\n| "
@@ -99,6 +101,25 @@ class SplunkSPL2Backend(TextQueryBackend):
         # Override state_defaults with the user-provided dataset
         self.state_defaults = {"dataset": dataset}
 
+    def convert_condition_val_str(
+        self, cond: ConditionValueExpression, state: ConversionState
+    ) -> Union[str, DeferredQueryExpression]:
+        """Convert unbound string value expressions to _raw LIKE searches."""
+        cond_value = cond.value
+        if not isinstance(cond_value, SigmaString):
+            raise TypeError(
+                f"Expected SigmaString for cond.value, got {type(cond_value)}"
+            )
+        # Convert to plain string without quotes, escaping LIKE special chars
+        converted = cond_value.convert(
+            self.escape_char,
+            self.wildcard_multi,
+            self.wildcard_single,
+            self.str_quote + self.add_escaped,
+            self.filter_chars,
+        )
+        return f'_raw LIKE "%{converted}%"'
+
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> str:
@@ -108,7 +129,8 @@ class SplunkSPL2Backend(TextQueryBackend):
     def finalize_query_module(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> str:
-        return "$result = " + query
+        table_fields = " | table " + ", ".join(rule.fields) if rule.fields else ""
+        return "$result = " + query + table_fields
 
     def finalize_output_module(self, queries: List[str]) -> List[str]:
         return queries

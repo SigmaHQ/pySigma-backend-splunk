@@ -304,7 +304,7 @@ def test_spl2_cidr_query(spl2_backend: SplunkSPL2Backend):
         """
             )
         )
-        == ['FROM main WHERE fieldA="192.168.0.0/16"']
+        == ['FROM main WHERE cidrmatch("192.168.0.0/16", fieldA)']
     )
 
 
@@ -565,3 +565,83 @@ def test_spl2_backend_registration():
     from sigma.backends.splunk import backends
     assert "splunk_spl2" in backends
     assert backends["splunk_spl2"] is SplunkSPL2Backend
+
+
+def test_spl2_unbound_keyword(spl2_backend: SplunkSPL2Backend):
+    """Unbound keyword values should be converted to _raw LIKE expressions."""
+    assert (
+        spl2_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                keywords:
+                    - keyword1
+                    - keyword2
+                condition: keywords
+        """
+            )
+        )
+        == ['FROM main WHERE _raw LIKE "%keyword1%" OR _raw LIKE "%keyword2%"']
+    )
+
+
+def test_spl2_regex_no_double_flag(spl2_backend: SplunkSPL2Backend):
+    """Regex output should not contain double (?i) flags."""
+    result = spl2_backend.convert(
+        SigmaCollection.from_yaml(
+            """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA|re: foo.*bar
+                condition: sel
+        """
+        )
+    )
+    # There should be exactly one (?i) flag, not two
+    assert result == ['FROM main WHERE match(fieldA, /(?i)foo.*bar/)']
+    assert "/(?i)(?i)" not in result[0]
+
+
+def test_spl2_module_output_with_fields(spl2_backend: SplunkSPL2Backend):
+    """Module format should preserve table fields."""
+    rule = SigmaCollection.from_yaml(
+        """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            fields:
+                - fieldA
+                - fieldB
+            detection:
+                sel:
+                    fieldA: valueA
+                condition: sel
+        """
+    )
+    assert spl2_backend.convert(rule, "module") == [
+        '$result = FROM main WHERE fieldA="valueA" | table fieldA, fieldB'
+    ]
+
+
+def test_spl2_pipeline_allowed_backends():
+    """Pipelines should include splunk_spl2 in allowed_backends."""
+    from sigma.pipelines.splunk import (
+        splunk_windows_pipeline,
+        splunk_windows_sysmon_acceleration_keywords,
+        splunk_cim_data_model,
+    )
+    assert "splunk_spl2" in splunk_windows_pipeline().allowed_backends
+    assert "splunk_spl2" in splunk_windows_sysmon_acceleration_keywords().allowed_backends
+    assert "splunk_spl2" in splunk_cim_data_model().allowed_backends

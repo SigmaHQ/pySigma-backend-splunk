@@ -78,7 +78,7 @@ splunk_web_proxy_cim_mapping = {
 def splunk_windows_pipeline():
     return ProcessingPipeline(
         name="Splunk Windows log source conditions",
-        allowed_backends={"splunk"},
+        allowed_backends={"splunk", "splunk_spl2"},
         priority=20,
         items=generate_windows_logsource_items("source", "WinEventLog:{source}")
         + [
@@ -97,7 +97,7 @@ def splunk_windows_pipeline():
 def splunk_windows_sysmon_acceleration_keywords():
     return ProcessingPipeline(
         name="Splunk Windows Sysmon search acceleration keywords",
-        allowed_backends={"splunk"},
+        allowed_backends={"splunk", "splunk_spl2"},
         priority=25,
         items=[
             ProcessingItem(  # Some optimizations searching for characteristic keyword for specific log sources
@@ -123,7 +123,7 @@ def splunk_windows_sysmon_acceleration_keywords():
 def splunk_cim_data_model():
     return ProcessingPipeline(
         name="Splunk CIM Data Model Mapping",
-        allowed_backends={"splunk"},
+        allowed_backends={"splunk", "splunk_spl2"},
         priority=20,
         items=[
             ProcessingItem(
