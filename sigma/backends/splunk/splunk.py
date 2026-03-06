@@ -1,3 +1,4 @@
+import hashlib
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
@@ -35,6 +36,7 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
     field_counts = {}
     default_field = "_raw"
+    max_match_group_name_len = 32
     operators = {
         True: "!=",
         False: "=",
@@ -74,8 +76,24 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         return f"{cleaned_field}{variable}{index_suffix}"
 
     @classmethod
+    def construct_field_match(cls, field):
+        cleaned_field = cls.clean_field(field)
+        suffix = f"Match{cls.get_field_suffix(field)}"
+        field_match = f"{cleaned_field}{suffix}"
+
+        if len(field_match) <= cls.max_match_group_name_len:
+            return field_match
+
+        digest = hashlib.blake2s(cleaned_field.encode()).hexdigest()[:8]
+        prefix_len = max(
+            cls.max_match_group_name_len - len(suffix) - len(digest),
+            0,
+        )
+        return f"{cleaned_field[:prefix_len]}{digest}{suffix}"
+
+    @classmethod
     def get_field_match(cls, field):
-        return cls.construct_field_variable(field, "Match")
+        return cls.construct_field_match(field)
 
     @classmethod
     def get_field_condition(cls, field):

@@ -1,6 +1,7 @@
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 import pytest
 from sigma.backends.splunk import SplunkBackend
+from sigma.backends.splunk.splunk import SplunkDeferredORRegularExpression
 from sigma.collection import SigmaCollection
 from sigma.processing.pipeline import ProcessingPipeline
 from sigma.pipelines.splunk import splunk_cim_data_model
@@ -260,6 +261,44 @@ def test_splunk_regex_query_explicit_or_with_nested_fields():
     assert splunk_backend.convert(collection) == [
         '\n| rex field=Event.EventData.fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=Event.EventData.fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
     ]
+
+
+def test_splunk_regex_group_name_is_capped_for_long_fields():
+    SplunkDeferredORRegularExpression.reset()
+    field = "msg_normalized_header_subject"
+    SplunkDeferredORRegularExpression.add_field(field)
+
+    field_match = SplunkDeferredORRegularExpression.get_field_match(field)
+
+    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match.endswith("Match")
+
+
+def test_splunk_regex_group_name_stays_unique_when_truncated():
+    SplunkDeferredORRegularExpression.reset()
+    field_1 = "msg_normalized_header_subject_alpha"
+    field_2 = "msg_normalized_header_subject_bravo"
+    SplunkDeferredORRegularExpression.add_field(field_1)
+    SplunkDeferredORRegularExpression.add_field(field_2)
+
+    field_match_1 = SplunkDeferredORRegularExpression.get_field_match(field_1)
+    field_match_2 = SplunkDeferredORRegularExpression.get_field_match(field_2)
+
+    assert len(field_match_1) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert len(field_match_2) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match_1 != field_match_2
+
+
+def test_splunk_regex_group_name_keeps_suffix_when_truncated():
+    SplunkDeferredORRegularExpression.reset()
+    field = "msg_normalized_header_subject_alpha"
+    SplunkDeferredORRegularExpression.add_field(field)
+    SplunkDeferredORRegularExpression.add_field(field)
+
+    field_match = SplunkDeferredORRegularExpression.get_field_match(field)
+
+    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match.endswith("Match2")
 
 
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
