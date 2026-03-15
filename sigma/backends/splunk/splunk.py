@@ -2,6 +2,7 @@ import hashlib
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
+from sigma.correlations import SigmaCorrelationRule
 from sigma.rule import SigmaRule, SigmaDetection
 from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
@@ -309,7 +310,7 @@ class SplunkBackend(TextQueryBackend):
 
     def finish_query(
         self,
-        rule: SigmaRule,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
         query: Union[str, DeferredQueryExpression],
         state: ConversionState,
     ) -> Union[str, DeferredQueryExpression]:
@@ -341,13 +342,22 @@ class SplunkBackend(TextQueryBackend):
         return super().finish_query(rule, query, state)
 
     def finalize_query_default(
-        self, rule: SigmaRule, query: str, index: int, state: ConversionState
+        self,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
+        query: str,
+        index: int,
+        state: ConversionState,
     ) -> str:
-        table_fields = " | table " + ",".join(rule.fields) if rule.fields else ""
-        return query + table_fields
+        if isinstance(rule, SigmaRule) and rule.fields:
+            return query + " | table " + ",".join(rule.fields)
+        return query
 
     def finalize_query_savedsearches(
-        self, rule: SigmaRule, query: str, index: int, state: ConversionState
+        self,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
+        query: str,
+        index: int,
+        state: ConversionState,
     ) -> str:
         clean_title = rule.title.translate(
             {ord(c): None for c in "[]"}
@@ -357,7 +367,9 @@ class SplunkBackend(TextQueryBackend):
             rule.description.strip() if rule.description else ""
         )
         query_settings["search"] = query + (
-            "\n| table " + ",".join(rule.fields) if rule.fields else ""
+            "\n| table " + ",".join(rule.fields)
+            if isinstance(rule, SigmaRule) and rule.fields
+            else ""
         )
 
         return f"\n[{clean_title}]" + self._generate_settings(query_settings)
