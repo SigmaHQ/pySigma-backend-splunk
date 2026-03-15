@@ -188,6 +188,13 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
 
+    # Regex used to extract Splunk metadata field conditions (index, source,
+    # sourcetype, host) from the beginning of a query so they can be placed
+    # before deferred pipeline commands.
+    _meta_field_re: ClassVar[Pattern] = re.compile(
+        r'(?:index|sourcetype|source|host)(?:="[^"]*"|=[^\s")]+)\s*'
+    )
+
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
         "stats": "Correlation using stats command (more efficient, static time window)",
@@ -332,12 +339,42 @@ class SplunkBackend(TextQueryBackend):
             if deferred_regex_or_expressions:
                 SplunkDeferredORRegularExpression.reset()
                 state.deferred[:] = remaining_deferred
-                query = (
-                    self.deferred_start
-                    + self.deferred_separator.join(deferred_regex_or_expressions)
-                    + "\n| search "
-                    + query
-                )
+
+                # Extract index/source/sourcetype/host conditions from the
+                # beginning of the query so they are placed before the
+                # deferred rex/eval pipeline commands instead of ending up
+                # inside the trailing "| search" clause.
+                prefix_parts = []
+                pos = 0
+                while pos < len(query):
+                    m = self._meta_field_re.match(query, pos)
+                    if m:
+                        prefix_parts.append(m.group().strip())
+                        pos = m.end()
+                    else:
+                        break
+
+                if prefix_parts:
+                    prefix = " ".join(prefix_parts)
+                    remaining_query = query[pos:]
+                    query = (
+                        prefix
+                        + self.deferred_start
+                        + self.deferred_separator.join(
+                            deferred_regex_or_expressions
+                        )
+                        + "\n| search "
+                        + remaining_query
+                    )
+                else:
+                    query = (
+                        self.deferred_start
+                        + self.deferred_separator.join(
+                            deferred_regex_or_expressions
+                        )
+                        + "\n| search "
+                        + query
+                    )
 
         return super().finish_query(rule, query, state)
 

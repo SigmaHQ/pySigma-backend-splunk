@@ -263,6 +263,49 @@ def test_splunk_regex_query_explicit_or_with_nested_fields():
     ]
 
 
+def test_splunk_regex_query_explicit_or_with_add_condition():
+    """Test that conditions added by processing pipelines (index, source) are
+    placed before deferred rex/eval pipeline commands instead of inside
+    the trailing '| search' clause."""
+
+    pipeline = ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: prefix_source_and_index
+              type: add_condition
+              conditions:
+                index: test
+                source: test
+        """
+    )
+    splunk_backend = SplunkBackend(pipeline)
+
+    collection = SigmaCollection.from_yaml(
+        """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    selection:
+                        EventID: 4688
+                        CommandLine|re:
+                            - "suspicious_command"
+                    selection2:
+                        Image|re:
+                            - "suspicious_command"
+                    condition: selection or selection2
+            """
+    )
+
+    assert splunk_backend.convert(collection) == [
+        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search (EventID=4688 CommandLineCondition="true") OR ImageCondition="true"'
+    ]
+
+
 def test_splunk_regex_group_name_is_capped_for_long_fields():
     SplunkDeferredORRegularExpression.reset()
     field = "msg_normalized_header_subject"
