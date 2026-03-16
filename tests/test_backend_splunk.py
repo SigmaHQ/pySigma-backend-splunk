@@ -832,6 +832,68 @@ by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id 
         )
     ]
 
+def test_splunk_data_model_process_creation_with_regex():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        ParentImage|endswith: explorer.exe
+        CommandLine|re: foo.*bar
+    condition: sel
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert result == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.parent_process_path="*explorer.exe" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| regex Processes.process="foo.*bar"
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_process_creation_with_or_regex():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel_img:
+        ParentImage|endswith: explorer.exe
+    sel_cmd:
+        - CommandLine|contains: test_value
+        - CommandLine|re: foo.*bar
+    condition: all of sel_*
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert result == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| rex field=Processes.process "(?<processMatch>foo.*bar)"
+| eval processCondition=if(isnotnull(processMatch), "true", "false")
+| search Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true"
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
 def test_splunk_data_model_no_data_model_specified():
     splunk_backend = SplunkBackend()
     rule = """
