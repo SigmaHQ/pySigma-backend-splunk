@@ -199,6 +199,11 @@ class SplunkBackend(TextQueryBackend):
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
 
+    # Pattern matching a leading field=value term in a query string.
+    _field_eq_val_re: ClassVar[Pattern] = re.compile(
+        r'([\w.]+)(?:="[^"]*"|=[^\s")]+)\s*'
+    )
+
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
         "stats": "Correlation using stats command (more efficient, static time window)",
@@ -356,11 +361,8 @@ class SplunkBackend(TextQueryBackend):
                 # inside the trailing "| search" clause.
                 prefix_parts = []
                 pos = 0
-                field_eq_val_re = re.compile(
-                    r'([\w.]+)(?:="[^"]*"|=[^\s")]+)\s*'
-                )
                 while pos < len(query):
-                    m = field_eq_val_re.match(query, pos)
+                    m = self._field_eq_val_re.match(query, pos)
                     if m and m.group(1) not in deferred_condition_fields:
                         prefix_parts.append(m.group().strip())
                         pos = m.end()
