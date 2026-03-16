@@ -102,6 +102,17 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         return cls.construct_field_variable(field, "Condition")
 
     @classmethod
+    def get_all_condition_fields(cls):
+        """Return the set of all condition field names created by deferred OR regex expressions."""
+        result = set()
+        for field, count in cls.field_counts.items():
+            cleaned = cls.clean_field(field)
+            for i in range(1, count + 1):
+                suffix = "" if i == 1 else str(i)
+                result.add(f"{cleaned}Condition{suffix}")
+        return result
+
+    @classmethod
     def reset(cls):
         cls.field_counts = {}
 
@@ -187,13 +198,6 @@ class SplunkBackend(TextQueryBackend):
     deferred_start: ClassVar[str] = "\n| "
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
-
-    # Regex used to extract Splunk metadata field conditions (index, source,
-    # sourcetype, host) from the beginning of a query so they can be placed
-    # before deferred pipeline commands.
-    _meta_field_re: ClassVar[Pattern] = re.compile(
-        r'(?:index|sourcetype|source|host)(?:="[^"]*"|=[^\s")]+)\s*'
-    )
 
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
@@ -337,18 +341,27 @@ class SplunkBackend(TextQueryBackend):
                     remaining_deferred.append(deferred_expression)
 
             if deferred_regex_or_expressions:
+                # Collect all condition field names created by deferred OR
+                # regex expressions before resetting, so we can identify
+                # which leading query parts don't depend on them.
+                deferred_condition_fields = (
+                    SplunkDeferredORRegularExpression.get_all_condition_fields()
+                )
                 SplunkDeferredORRegularExpression.reset()
                 state.deferred[:] = remaining_deferred
 
-                # Extract index/source/sourcetype/host conditions from the
-                # beginning of the query so they are placed before the
+                # Extract leading field=value conditions that don't reference
+                # any deferred condition field so they are placed before the
                 # deferred rex/eval pipeline commands instead of ending up
                 # inside the trailing "| search" clause.
                 prefix_parts = []
                 pos = 0
+                field_eq_val_re = re.compile(
+                    r'([\w.]+)(?:="[^"]*"|=[^\s")]+)\s*'
+                )
                 while pos < len(query):
-                    m = self._meta_field_re.match(query, pos)
-                    if m:
+                    m = field_eq_val_re.match(query, pos)
+                    if m and m.group(1) not in deferred_condition_fields:
                         prefix_parts.append(m.group().strip())
                         pos = m.end()
                     else:
