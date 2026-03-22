@@ -1,6 +1,8 @@
+import hashlib
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
+from sigma.correlations import SigmaCorrelationRule
 from sigma.rule import SigmaRule, SigmaDetection
 from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
@@ -18,6 +20,7 @@ from sigma.pipelines.splunk.splunk import (
     splunk_windows_registry_cim_mapping,
     splunk_windows_file_event_cim_mapping,
     splunk_web_proxy_cim_mapping,
+    splunk_dns_cim_mapping,
 )
 import sigma
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
@@ -35,6 +38,7 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
     field_counts = {}
     default_field = "_raw"
+    max_match_group_name_len = 32
     operators = {
         True: "!=",
         False: "=",
@@ -74,12 +78,39 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         return f"{cleaned_field}{variable}{index_suffix}"
 
     @classmethod
+    def construct_field_match(cls, field):
+        cleaned_field = cls.clean_field(field)
+        suffix = f"Match{cls.get_field_suffix(field)}"
+        field_match = f"{cleaned_field}{suffix}"
+
+        if len(field_match) <= cls.max_match_group_name_len:
+            return field_match
+
+        digest = hashlib.blake2s(cleaned_field.encode()).hexdigest()[:8]
+        prefix_len = max(
+            cls.max_match_group_name_len - len(suffix) - len(digest),
+            0,
+        )
+        return f"{cleaned_field[:prefix_len]}{digest}{suffix}"
+
+    @classmethod
     def get_field_match(cls, field):
-        return cls.construct_field_variable(field, "Match")
+        return cls.construct_field_match(field)
 
     @classmethod
     def get_field_condition(cls, field):
         return cls.construct_field_variable(field, "Condition")
+
+    @classmethod
+    def get_all_condition_fields(cls):
+        """Return the set of all condition field names created by deferred OR regex expressions."""
+        result = set()
+        for field, count in cls.field_counts.items():
+            cleaned = cls.clean_field(field)
+            for i in range(1, count + 1):
+                suffix = "" if i == 1 else str(i)
+                result.add(f"{cleaned}Condition{suffix}")
+        return result
 
     @classmethod
     def reset(cls):
@@ -167,6 +198,11 @@ class SplunkBackend(TextQueryBackend):
     deferred_start: ClassVar[str] = "\n| "
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
+
+    # Pattern matching a leading field=value term in a query string.
+    _field_eq_val_re: ClassVar[Pattern] = re.compile(
+        r'([\w.]+)(?:="[^"]*"|=[^\s")]+)\s*'
+    )
 
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
@@ -300,7 +336,7 @@ class SplunkBackend(TextQueryBackend):
 
     def finish_query(
         self,
-        rule: SigmaRule,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
         query: Union[str, DeferredQueryExpression],
         state: ConversionState,
     ) -> Union[str, DeferredQueryExpression]:
@@ -320,6 +356,12 @@ class SplunkBackend(TextQueryBackend):
                     remaining_deferred.append(deferred_expression)
 
             if deferred_regex_or_expressions:
+                # Collect all condition field names created by deferred OR
+                # regex expressions before resetting, so finalize methods
+                # can identify which query parts don't depend on them.
+                state.processing_state["deferred_or_condition_fields"] = (
+                    SplunkDeferredORRegularExpression.get_all_condition_fields()
+                )
                 SplunkDeferredORRegularExpression.reset()
                 state.deferred[:] = remaining_deferred
                 query = (
@@ -332,13 +374,56 @@ class SplunkBackend(TextQueryBackend):
         return super().finish_query(rule, query, state)
 
     def finalize_query_default(
-        self, rule: SigmaRule, query: str, index: int, state: ConversionState
+        self,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
+        query: str,
+        index: int,
+        state: ConversionState,
     ) -> str:
-        table_fields = " | table " + ",".join(rule.fields) if rule.fields else ""
-        return query + table_fields
+        # When OR-ed regex expressions are deferred, extract leading field=value
+        # conditions that don't depend on any deferred eval field and place them
+        # before the deferred rex/eval pipeline commands. This ensures conditions
+        # like index/source are at the beginning of the query for efficient
+        # initial data retrieval.
+        deferred_condition_fields = state.processing_state.get(
+            "deferred_or_condition_fields"
+        )
+        search_marker = "\n| search "
+        if deferred_condition_fields and search_marker in query:
+            marker_idx = query.index(search_marker)
+            deferred_part = query[:marker_idx]
+            search_query = query[marker_idx + len(search_marker) :]
+
+            prefix_parts = []
+            pos = 0
+            while pos < len(search_query):
+                m = self._field_eq_val_re.match(search_query, pos)
+                if m and m.group(1) not in deferred_condition_fields:
+                    prefix_parts.append(m.group().strip())
+                    pos = m.end()
+                else:
+                    break
+
+            if prefix_parts:
+                prefix = " ".join(prefix_parts)
+                remaining_query = search_query[pos:]
+                query = (
+                    prefix
+                    + deferred_part
+                    + search_marker
+                    + remaining_query
+                )
+
+        if isinstance(rule, SigmaRule) and rule.fields:
+            return query + " | table " + ",".join(rule.fields)
+        return query
 
     def finalize_query_savedsearches(
-        self, rule: SigmaRule, query: str, index: int, state: ConversionState
+        self,
+        rule: Union[SigmaRule, SigmaCorrelationRule],
+        query: str,
+        index: int,
+        state: ConversionState,
     ) -> str:
         clean_title = rule.title.translate(
             {ord(c): None for c in "[]"}
@@ -348,7 +433,9 @@ class SplunkBackend(TextQueryBackend):
             rule.description.strip() if rule.description else ""
         )
         query_settings["search"] = query + (
-            "\n| table " + ",".join(rule.fields) if rule.fields else ""
+            "\n| table " + ",".join(rule.fields)
+            if isinstance(rule, SigmaRule) and rule.fields
+            else ""
         )
 
         return f"\n[{clean_title}]" + self._generate_settings(query_settings)
@@ -403,6 +490,12 @@ class SplunkBackend(TextQueryBackend):
             data_set = "Proxy"
             cim_fields = " ".join(splunk_web_proxy_cim_mapping.values())
 
+        elif rule.logsource.category == "network":
+            if rule.logsource.service == "dns":
+                data_model = "Network_Resolution"
+                data_set = "DNS"
+                cim_fields = " ".join(splunk_dns_cim_mapping.values())
+
         try:
             data_model_set = state.processing_state["data_model_set"]
         except KeyError:
@@ -430,7 +523,33 @@ class SplunkBackend(TextQueryBackend):
                 "No fields specified by processing pipeline"
             )
 
-        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {query} by {fields}
+        # Separate deferred expressions (regex/rex/eval/where) from the WHERE clause.
+        # Deferred expressions cannot be placed inside a tstats WHERE clause.
+        deferred_part = ""
+        where_query = query
+
+        # Handle OR regex deferred expressions prepended by finish_query.
+        # Format: \n| rex ...\n| eval ...\n| search <query>
+        search_marker = "\n| search "
+        has_or_regex_deferred = search_marker in query
+        if has_or_regex_deferred:
+            marker_idx = query.index(search_marker)
+            deferred_part = query[:marker_idx]
+            where_query = query[marker_idx + len(search_marker) :]
+
+        # Handle simple deferred expressions appended by the parent's finish_query.
+        # Format: <query>\n| regex/where ...
+        deferred_suffix_marker = "\n| "
+        if deferred_suffix_marker in where_query:
+            idx = where_query.index(deferred_suffix_marker)
+            deferred_part += where_query[idx:]
+            where_query = where_query[:idx]
+
+        # Re-add the search command after deferred expressions for OR regex filtering
+        if has_or_regex_deferred:
+            deferred_part += search_marker + where_query
+
+        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {where_query} by {fields}{deferred_part}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)

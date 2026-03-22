@@ -1,6 +1,7 @@
 from sigma.exceptions import SigmaFeatureNotSupportedByBackendError
 import pytest
 from sigma.backends.splunk import SplunkBackend
+from sigma.backends.splunk.splunk import SplunkDeferredORRegularExpression
 from sigma.collection import SigmaCollection
 from sigma.processing.pipeline import ProcessingPipeline
 from sigma.pipelines.splunk import splunk_cim_data_model
@@ -260,6 +261,87 @@ def test_splunk_regex_query_explicit_or_with_nested_fields():
     assert splunk_backend.convert(collection) == [
         '\n| rex field=Event.EventData.fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=Event.EventData.fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search fieldACondition="true" OR fieldBCondition="true"'
     ]
+
+
+def test_splunk_regex_query_explicit_or_with_add_condition():
+    """Test that conditions added by processing pipelines (index, source) are
+    placed before deferred rex/eval pipeline commands instead of inside
+    the trailing '| search' clause."""
+
+    pipeline = ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: prefix_source_and_index
+              type: add_condition
+              conditions:
+                index: test
+                source: test
+        """
+    )
+    splunk_backend = SplunkBackend(pipeline)
+
+    collection = SigmaCollection.from_yaml(
+        """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    selection:
+                        EventID: 4688
+                        CommandLine|re:
+                            - "suspicious_command"
+                    selection2:
+                        Image|re:
+                            - "suspicious_command"
+                    condition: selection or selection2
+            """
+    )
+
+    assert splunk_backend.convert(collection) == [
+        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search (EventID=4688 CommandLineCondition="true") OR ImageCondition="true"'
+    ]
+
+
+def test_splunk_regex_group_name_is_capped_for_long_fields():
+    SplunkDeferredORRegularExpression.reset()
+    field = "msg_normalized_header_subject"
+    SplunkDeferredORRegularExpression.add_field(field)
+
+    field_match = SplunkDeferredORRegularExpression.get_field_match(field)
+
+    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match.endswith("Match")
+
+
+def test_splunk_regex_group_name_stays_unique_when_truncated():
+    SplunkDeferredORRegularExpression.reset()
+    field_1 = "msg_normalized_header_subject_alpha"
+    field_2 = "msg_normalized_header_subject_bravo"
+    SplunkDeferredORRegularExpression.add_field(field_1)
+    SplunkDeferredORRegularExpression.add_field(field_2)
+
+    field_match_1 = SplunkDeferredORRegularExpression.get_field_match(field_1)
+    field_match_2 = SplunkDeferredORRegularExpression.get_field_match(field_2)
+
+    assert len(field_match_1) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert len(field_match_2) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match_1 != field_match_2
+
+
+def test_splunk_regex_group_name_keeps_suffix_when_truncated():
+    SplunkDeferredORRegularExpression.reset()
+    field = "msg_normalized_header_subject_alpha"
+    SplunkDeferredORRegularExpression.add_field(field)
+    SplunkDeferredORRegularExpression.add_field(field)
+
+    field_match = SplunkDeferredORRegularExpression.get_field_match(field)
+
+    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert field_match.endswith("Match2")
 
 
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
@@ -723,6 +805,129 @@ detection:
         """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
 Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
 Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+def test_splunk_data_model_dns_query():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: network
+    service: dns
+detection:
+    sel:
+        destination.ip: 2001:db8::1
+        destination.port: 53
+        dns.id: 1
+        dns.question.name: example.com
+        dns.question.type: AAAA
+        source.ip: 2001:db8::2
+        source.port: 53
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Network_Resolution.DNS where
+DNS.dest="2001:db8::1" DNS.dest_port=53 DNS.transaction_id=1 DNS.query="example.com" DNS.query_type="AAAA" DNS.src="2001:db8::2" DNS.src_port=53
+by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id DNS.query DNS.query_type DNS.reply_code_id DNS.src DNS.src_port
+| `drop_dm_object_name(DNS)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) """.replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_dns_answer():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: network
+    service: dns
+detection:
+    sel:
+        destination.ip: 2001:db8::1
+        destination.port: 53
+        dns.id: 1
+        dns.answers.name: cname.example.com
+        dns.answers.type: CNAME
+        dns.answers.ttl: 600
+        source.ip: 2001:db8::2
+        source.port: 53
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Network_Resolution.DNS where
+DNS.dest="2001:db8::1" DNS.dest_port=53 DNS.transaction_id=1 DNS.answer="cname.example.com" DNS.record_type="CNAME" DNS.ttl=600 DNS.src="2001:db8::2" DNS.src_port=53
+by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id DNS.query DNS.query_type DNS.reply_code_id DNS.src DNS.src_port
+| `drop_dm_object_name(DNS)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime) """.replace(
+            "\n", " "
+        )
+    ]
+
+def test_splunk_data_model_process_creation_with_regex():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        ParentImage|endswith: explorer.exe
+        CommandLine|re: foo.*bar
+    condition: sel
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert result == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.parent_process_path="*explorer.exe" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| regex Processes.process="foo.*bar"
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_process_creation_with_or_regex():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel_img:
+        ParentImage|endswith: explorer.exe
+    sel_cmd:
+        - CommandLine|contains: test_value
+        - CommandLine|re: foo.*bar
+    condition: all of sel_*
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert result == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| rex field=Processes.process "(?<processMatch>foo.*bar)"
+| eval processCondition=if(isnotnull(processMatch), "true", "false")
+| search Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true"
 | `drop_dm_object_name(Processes)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
