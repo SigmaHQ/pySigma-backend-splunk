@@ -102,6 +102,17 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
         return cls.construct_field_variable(field, "Condition")
 
     @classmethod
+    def get_all_condition_fields(cls):
+        """Return the set of all condition field names created by deferred OR regex expressions."""
+        result = set()
+        for field, count in cls.field_counts.items():
+            cleaned = cls.clean_field(field)
+            for i in range(1, count + 1):
+                suffix = "" if i == 1 else str(i)
+                result.add(f"{cleaned}Condition{suffix}")
+        return result
+
+    @classmethod
     def reset(cls):
         cls.field_counts = {}
 
@@ -187,6 +198,11 @@ class SplunkBackend(TextQueryBackend):
     deferred_start: ClassVar[str] = "\n| "
     deferred_separator: ClassVar[str] = "\n| "
     deferred_only_query: ClassVar[str] = "*"
+
+    # Pattern matching a leading field=value term in a query string.
+    _field_eq_val_re: ClassVar[Pattern] = re.compile(
+        r'([\w.]+)(?:="[^"]*"|=[^\s")]+)\s*'
+    )
 
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
@@ -330,6 +346,12 @@ class SplunkBackend(TextQueryBackend):
                     remaining_deferred.append(deferred_expression)
 
             if deferred_regex_or_expressions:
+                # Collect all condition field names created by deferred OR
+                # regex expressions before resetting, so finalize methods
+                # can identify which query parts don't depend on them.
+                state.processing_state["deferred_or_condition_fields"] = (
+                    SplunkDeferredORRegularExpression.get_all_condition_fields()
+                )
                 SplunkDeferredORRegularExpression.reset()
                 state.deferred[:] = remaining_deferred
                 query = (
@@ -348,6 +370,40 @@ class SplunkBackend(TextQueryBackend):
         index: int,
         state: ConversionState,
     ) -> str:
+        # When OR-ed regex expressions are deferred, extract leading field=value
+        # conditions that don't depend on any deferred eval field and place them
+        # before the deferred rex/eval pipeline commands. This ensures conditions
+        # like index/source are at the beginning of the query for efficient
+        # initial data retrieval.
+        deferred_condition_fields = state.processing_state.get(
+            "deferred_or_condition_fields"
+        )
+        search_marker = "\n| search "
+        if deferred_condition_fields and search_marker in query:
+            marker_idx = query.index(search_marker)
+            deferred_part = query[:marker_idx]
+            search_query = query[marker_idx + len(search_marker) :]
+
+            prefix_parts = []
+            pos = 0
+            while pos < len(search_query):
+                m = self._field_eq_val_re.match(search_query, pos)
+                if m and m.group(1) not in deferred_condition_fields:
+                    prefix_parts.append(m.group().strip())
+                    pos = m.end()
+                else:
+                    break
+
+            if prefix_parts:
+                prefix = " ".join(prefix_parts)
+                remaining_query = search_query[pos:]
+                query = (
+                    prefix
+                    + deferred_part
+                    + search_marker
+                    + remaining_query
+                )
+
         if isinstance(rule, SigmaRule) and rule.fields:
             return query + " | table " + ",".join(rule.fields)
         return query
