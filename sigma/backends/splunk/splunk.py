@@ -347,49 +347,19 @@ class SplunkBackend(TextQueryBackend):
 
             if deferred_regex_or_expressions:
                 # Collect all condition field names created by deferred OR
-                # regex expressions before resetting, so we can identify
-                # which leading query parts don't depend on them.
-                deferred_condition_fields = (
+                # regex expressions before resetting, so finalize methods
+                # can identify which query parts don't depend on them.
+                state.processing_state["deferred_or_condition_fields"] = (
                     SplunkDeferredORRegularExpression.get_all_condition_fields()
                 )
                 SplunkDeferredORRegularExpression.reset()
                 state.deferred[:] = remaining_deferred
-
-                # Extract leading field=value conditions that don't reference
-                # any deferred condition field so they are placed before the
-                # deferred rex/eval pipeline commands instead of ending up
-                # inside the trailing "| search" clause.
-                prefix_parts = []
-                pos = 0
-                while pos < len(query):
-                    m = self._field_eq_val_re.match(query, pos)
-                    if m and m.group(1) not in deferred_condition_fields:
-                        prefix_parts.append(m.group().strip())
-                        pos = m.end()
-                    else:
-                        break
-
-                if prefix_parts:
-                    prefix = " ".join(prefix_parts)
-                    remaining_query = query[pos:]
-                    query = (
-                        prefix
-                        + self.deferred_start
-                        + self.deferred_separator.join(
-                            deferred_regex_or_expressions
-                        )
-                        + "\n| search "
-                        + remaining_query
-                    )
-                else:
-                    query = (
-                        self.deferred_start
-                        + self.deferred_separator.join(
-                            deferred_regex_or_expressions
-                        )
-                        + "\n| search "
-                        + query
-                    )
+                query = (
+                    self.deferred_start
+                    + self.deferred_separator.join(deferred_regex_or_expressions)
+                    + "\n| search "
+                    + query
+                )
 
         return super().finish_query(rule, query, state)
 
@@ -400,6 +370,40 @@ class SplunkBackend(TextQueryBackend):
         index: int,
         state: ConversionState,
     ) -> str:
+        # When OR-ed regex expressions are deferred, extract leading field=value
+        # conditions that don't depend on any deferred eval field and place them
+        # before the deferred rex/eval pipeline commands. This ensures conditions
+        # like index/source are at the beginning of the query for efficient
+        # initial data retrieval.
+        deferred_condition_fields = state.processing_state.get(
+            "deferred_or_condition_fields"
+        )
+        search_marker = "\n| search "
+        if deferred_condition_fields and search_marker in query:
+            marker_idx = query.index(search_marker)
+            deferred_part = query[:marker_idx]
+            search_query = query[marker_idx + len(search_marker) :]
+
+            prefix_parts = []
+            pos = 0
+            while pos < len(search_query):
+                m = self._field_eq_val_re.match(search_query, pos)
+                if m and m.group(1) not in deferred_condition_fields:
+                    prefix_parts.append(m.group().strip())
+                    pos = m.end()
+                else:
+                    break
+
+            if prefix_parts:
+                prefix = " ".join(prefix_parts)
+                remaining_query = search_query[pos:]
+                query = (
+                    prefix
+                    + deferred_part
+                    + search_marker
+                    + remaining_query
+                )
+
         if isinstance(rule, SigmaRule) and rule.fields:
             return query + " | table " + ",".join(rule.fields)
         return query
