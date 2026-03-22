@@ -509,7 +509,33 @@ class SplunkBackend(TextQueryBackend):
                 "No fields specified by processing pipeline"
             )
 
-        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {query} by {fields}
+        # Separate deferred expressions (regex/rex/eval/where) from the WHERE clause.
+        # Deferred expressions cannot be placed inside a tstats WHERE clause.
+        deferred_part = ""
+        where_query = query
+
+        # Handle OR regex deferred expressions prepended by finish_query.
+        # Format: \n| rex ...\n| eval ...\n| search <query>
+        search_marker = "\n| search "
+        has_or_regex_deferred = search_marker in query
+        if has_or_regex_deferred:
+            marker_idx = query.index(search_marker)
+            deferred_part = query[:marker_idx]
+            where_query = query[marker_idx + len(search_marker) :]
+
+        # Handle simple deferred expressions appended by the parent's finish_query.
+        # Format: <query>\n| regex/where ...
+        deferred_suffix_marker = "\n| "
+        if deferred_suffix_marker in where_query:
+            idx = where_query.index(deferred_suffix_marker)
+            deferred_part += where_query[idx:]
+            where_query = where_query[:idx]
+
+        # Re-add the search command after deferred expressions for OR regex filtering
+        if has_or_regex_deferred:
+            deferred_part += search_marker + where_query
+
+        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {where_query} by {fields}{deferred_part}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
