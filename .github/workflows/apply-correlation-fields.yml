@@ -1,0 +1,273 @@
+name: Apply correlation field implementation
+
+on:
+  push:
+    branches:
+      - fix/correlation-context-fields
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/correlation-context-fields
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply implementation and regression tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          backend_path = Path("sigma/backends/splunk/splunk.py")
+          backend = backend_path.read_text(encoding="utf-8")
+
+          old_templates = '''    event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats count as event_count by _time{groupby}",
+          }
+          value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats dc({field}) as value_count by _time{groupby}",
+          }
+          temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats dc(event_type) as event_type_count by _time{groupby}",
+          }
+          temporal_extended_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats values(event_type) as event_types by _time{groupby}",
+          }
+          '''
+
+          new_templates = '''    event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats count as event_count{fields} by _time{groupby}",
+          }
+          value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats dc({field}) as value_count{fields} by _time{groupby}",
+          }
+          temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats dc(event_type) as event_type_count{fields} by _time{groupby}",
+          }
+          temporal_extended_aggregation_expression: ClassVar[Dict[str, str]] = {
+              "stats": "| bin _time span={timespan}\\n| stats values(event_type) as event_types{fields} by _time{groupby}",
+          }
+
+          correlation_fields_expression: ClassVar[Dict[str, str]] = {"stats": "{fields}"}
+          correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
+              "stats": " values({field}) as {field}"
+          }
+          correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {"stats": ""}
+          '''
+
+          if old_templates not in backend:
+              raise SystemExit("Expected Splunk correlation template block was not found")
+          backend_path.write_text(
+              backend.replace(old_templates, new_templates, 1), encoding="utf-8"
+          )
+
+          tests_path = Path("tests/test_backend_splunk_correlations.py")
+          tests = tests_path.read_text(encoding="utf-8")
+          marker = "def test_correlation_rule_subrule_fields_not_in_output"
+          if marker not in tests:
+              raise SystemExit("Expected correlation field regression test was not found")
+
+          replacement_tests = '''def test_correlation_rule_subrule_fields_in_stats_output(splunk_backend):
+              correlation_rule = SigmaCollection.from_yaml(
+                  """
+          title: Base rule
+          name: base_rule
+          status: test
+          logsource:
+              category: test
+          detection:
+              selection:
+                  fieldA: value1
+              condition: selection
+          fields:
+              - fieldA
+              - fieldB
+              - fieldC
+          ---
+          title: Correlation
+          status: test
+          correlation:
+              type: event_count
+              rules:
+                  - base_rule
+              group-by:
+                  - fieldC
+              timespan: 15m
+              condition:
+                  gte: 10
+                      """
+              )
+              result = splunk_backend.convert(correlation_rule)
+              assert "table" not in result[0]
+              assert result == [
+                  """fieldA="value1"
+
+          | bin _time span=15m
+          | stats count as event_count values(fieldA) as fieldA values(fieldB) as fieldB by _time fieldC
+
+          | search event_count >= 10"""
+              ]
+
+
+          def test_correlation_rule_fields_are_deduplicated(splunk_backend):
+              correlation_rule = SigmaCollection.from_yaml(
+                  """
+          title: Base rule
+          name: base_rule
+          status: test
+          logsource:
+              category: test
+          detection:
+              selection:
+                  fieldA: value1
+              condition: selection
+          fields:
+              - fieldA
+              - fieldB
+          ---
+          title: Correlation
+          status: test
+          fields:
+              - fieldB
+              - fieldC
+          correlation:
+              type: event_count
+              rules:
+                  - base_rule
+              group-by:
+                  - fieldD
+              timespan: 15m
+              condition:
+                  gte: 10
+                      """
+              )
+              assert splunk_backend.convert(correlation_rule) == [
+                  """fieldA="value1"
+
+          | bin _time span=15m
+          | stats count as event_count values(fieldA) as fieldA values(fieldB) as fieldB values(fieldC) as fieldC by _time fieldD
+
+          | search event_count >= 10"""
+              ]
+
+
+          def test_value_count_correlation_includes_context_fields(splunk_backend):
+              correlation_rule = SigmaCollection.from_yaml(
+                  """
+          title: Base rule
+          name: base_rule
+          status: test
+          logsource:
+              category: test
+          detection:
+              selection:
+                  fieldA: value1
+              condition: selection
+          fields:
+              - fieldA
+              - fieldE
+          ---
+          title: Correlation
+          status: test
+          correlation:
+              type: value_count
+              rules:
+                  - base_rule
+              group-by:
+                  - fieldC
+              timespan: 15m
+              condition:
+                  gte: 5
+                  field: fieldD
+                      """
+              )
+              assert splunk_backend.convert(correlation_rule) == [
+                  """fieldA="value1"
+
+          | bin _time span=15m
+          | stats dc(fieldD) as value_count values(fieldA) as fieldA values(fieldE) as fieldE by _time fieldC
+
+          | search value_count >= 5"""
+              ]
+
+
+          def test_temporal_correlation_includes_context_fields(splunk_backend):
+              correlation_rule = SigmaCollection.from_yaml(
+                  """
+          title: Base rule 1
+          name: base_rule_1
+          status: test
+          logsource:
+              category: test
+          detection:
+              selection:
+                  fieldA: value1
+              condition: selection
+          fields:
+              - fieldE
+              - fieldC
+          ---
+          title: Base rule 2
+          name: base_rule_2
+          status: test
+          logsource:
+              category: test
+          detection:
+              selection:
+                  fieldB: value2
+              condition: selection
+          fields:
+              - fieldF
+              - fieldC
+          ---
+          title: Temporal correlation rule
+          status: test
+          correlation:
+              type: temporal
+              rules:
+                  - base_rule_1
+                  - base_rule_2
+              group-by:
+                  - fieldC
+              timespan: 15m
+                      """
+              )
+              assert splunk_backend.convert(correlation_rule) == [
+                  """| multisearch
+          [ search fieldA="value1" | eval event_type="base_rule_1" ]
+          [ search fieldB="value2" | eval event_type="base_rule_2" ]
+
+          | bin _time span=15m
+          | stats dc(event_type) as event_type_count values(fieldE) as fieldE values(fieldF) as fieldF by _time fieldC
+
+          | search event_type_count >= 2"""
+              ]
+          '''
+
+          start = tests.index(marker)
+          tests_path.write_text(tests[:start] + replacement_tests, encoding="utf-8")
+          PY
+
+      - name: Install project and test dependencies
+        run: python -m pip install -e . pytest
+
+      - name: Run correlation regression tests
+        run: python -m pytest tests/test_backend_splunk_correlations.py
+
+      - name: Remove temporary workflow and commit implementation
+        run: |
+          rm .github/workflows/apply-correlation-fields.yml
+          git config user.name "theluckydraco-stack"
+          git config user.email "263336931+theluckydraco-stack@users.noreply.github.com"
+          git add sigma/backends/splunk/splunk.py tests/test_backend_splunk_correlations.py .github/workflows/apply-correlation-fields.yml
+          git commit -m "fix: retain correlation context fields in Splunk stats"
+          git push origin HEAD:fix/correlation-context-fields
