@@ -227,16 +227,24 @@ class SplunkBackend(TextQueryBackend):
     correlation_search_field_normalization_expression_joiner: ClassVar[str] = ""
 
     event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats count as event_count by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats count as event_count{fields} by _time{groupby}",
     }
     value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count{fields} by _time{groupby}",
     }
     temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count{fields} by _time{groupby}",
     }
     temporal_extended_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats values(event_type) as event_types by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats values(event_type) as event_types{fields} by _time{groupby}",
+    }
+
+    correlation_fields_expression: ClassVar[Dict[str, str]] = {"stats": "{fields}"}
+    correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
+        "stats": " values({field}) as {field}"
+    }
+    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {
+        "stats": ""
     }
 
     timespan_mapping: ClassVar[Dict[str, str]] = {
