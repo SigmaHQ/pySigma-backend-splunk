@@ -2,7 +2,7 @@ import hashlib
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
-from sigma.correlations import SigmaCorrelationRule
+from sigma.correlations import SigmaCorrelationRule, SigmaRuleReference
 from sigma.rule import SigmaRule, SigmaDetection
 from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
@@ -226,11 +226,20 @@ class SplunkBackend(TextQueryBackend):
     )
     correlation_search_field_normalization_expression_joiner: ClassVar[str] = ""
 
+    # Enrichment fields for correlation aggregations
+    correlation_fields_expression: ClassVar[Dict[str, str]] = {"stats": " {fields}"}
+    correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
+        "stats": "values({field}) as {field}"
+    }
+    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {
+        "stats": " "
+    }
+
     event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats count as event_count by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats count as event_count{fields} by _time{groupby}",
     }
     value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count by _time{groupby}",
+        "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count{fields} by _time{groupby}",
     }
     temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count by _time{groupby}",
@@ -263,6 +272,53 @@ class SplunkBackend(TextQueryBackend):
     extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
         "stats": 'event_types="{ruleid}"'
     }
+
+    def convert_correlation_aggregation_fields_from_template(
+        self,
+        correlation_rule_fields: List[str],
+        referenced_rules: List[SigmaRuleReference],
+        group_by: Optional[List[str]],
+        method: str,
+    ) -> str:
+        """Build the enrichment fields expression for a correlation aggregation.
+
+        This overrides the core implementation so that enrichment fields come ONLY from the
+        correlation rule's own ``fields:`` list. Referenced base-rule fields are deliberately
+        ignored, keeping the change purely additive: a correlation rule without its own
+        ``fields:`` renders byte-identically to the stock backend, regardless of what its
+        referenced rules declare. Fields appearing in ``group_by`` are still excluded, and the
+        empty-string and None-template guards match core behaviour.
+
+        The Sigma correlation rules specification defines ``fields:`` on a correlation rule as
+        the fields to output alongside the aggregation, distinct from the ``fields:`` of the
+        referenced rules. Scoping enrichment to the correlation rule's own list follows that
+        definition and avoids changing existing base-rule (``| table``) output.
+        See https://github.com/SigmaHQ/sigma-specification/blob/main/specification/sigma-correlation-rules-specification.md
+        """
+        if self.correlation_fields_expression is None:
+            return ""
+        all_fields = []
+        # Include ONLY fields declared on the correlation rule itself (ignore referenced rules).
+        for fld in correlation_rule_fields:
+            # Exclude groupby fields and keep only unique fields (remove duplicates)
+            if (group_by is None or fld not in group_by) and fld not in all_fields:
+                all_fields.append(fld)
+        if (
+            len(all_fields) == 0
+            or self.correlation_fields_field_expression is None
+            or self.correlation_fields_field_expression_joiner is None
+        ):
+            return ""
+        return self.correlation_fields_expression[method].format(
+            fields=self.correlation_fields_field_expression_joiner[method].join(
+                (
+                    self.correlation_fields_field_expression[method].format(
+                        field=self.escape_and_quote_field(field)
+                    )
+                    for field in all_fields
+                )
+            )
+        )
 
     def __init__(
         self,

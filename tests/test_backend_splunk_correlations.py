@@ -75,6 +75,185 @@ correlation:
 | search value_count < 10"""
     ]
 
+def test_value_count_correlation_rule_with_fields_stats_query(splunk_backend):
+    """Test value_count correlation WITH fields: enrichment fields should be added to stats."""
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Multiple occurrences with enrichment
+status: test
+correlation:
+    type: value_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+    timespan: 15m
+    condition:
+        lt: 10
+        field: fieldD
+fields:
+    - device_name
+    - source_ip
+    - username
+            """
+    )
+    assert splunk_backend.convert(correlation_rule) == [
+        """fieldA="value1" fieldB="value2"
+
+| bin _time span=15m
+| stats dc(fieldD) as value_count values(device_name) as device_name values(source_ip) as source_ip values(username) as username by _time fieldC
+
+| search value_count < 10"""
+    ]
+
+def test_value_count_correlation_rule_without_fields_unchanged(splunk_backend):
+    """Test value_count correlation WITHOUT fields: output must be byte-identical to v2.1.0 baseline."""
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Multiple occurrences of base event
+status: test
+correlation:
+    type: value_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+    timespan: 15m
+    condition:
+        lt: 10
+        field: fieldD
+            """
+    )
+    # This MUST match the exact output from the existing test_value_count_correlation_rule_stats_query
+    assert splunk_backend.convert(correlation_rule) == [
+        """fieldA="value1" fieldB="value2"
+
+| bin _time span=15m
+| stats dc(fieldD) as value_count by _time fieldC
+
+| search value_count < 10"""
+    ]
+
+def test_value_count_correlation_base_rule_fields_ignored(splunk_backend):
+    """Regression: base rule HAS fields but correlation section has NONE.
+
+    Enrichment must come only from the correlation rule's own fields, so the base rule's fields
+    must NOT leak into the output. Result must be byte-identical to stock (no values() clauses).
+    """
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+fields:
+    - target.displayName
+    - actor.alternateId
+    - client.ipAddress
+    - published
+---
+title: Multiple occurrences of base event
+status: test
+correlation:
+    type: value_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+    timespan: 15m
+    condition:
+        lt: 10
+        field: fieldD
+            """
+    )
+    result = splunk_backend.convert(correlation_rule)
+    assert "values(" not in result[0]
+    assert result == [
+        """fieldA="value1" fieldB="value2"
+
+| bin _time span=15m
+| stats dc(fieldD) as value_count by _time fieldC
+
+| search value_count < 10"""
+    ]
+
+def test_event_count_correlation_rule_with_fields_stats_query(splunk_backend):
+    """Test event_count correlation WITH its own fields: enrichment fields should be added to stats.
+
+    Fields are declared on the CORRELATION section, not the base rule. The base rule's own fields
+    must NOT leak into the enrichment output.
+    """
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+fields:
+    - should_not_appear
+---
+title: Multiple occurrences with enrichment
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+        - fieldD
+    timespan: 15m
+    condition:
+        gte: 10
+fields:
+    - fieldE
+    - fieldF
+            """
+    )
+    result = splunk_backend.convert(correlation_rule)
+    assert "should_not_appear" not in result[0]
+    assert result == [
+        """fieldA="value1" fieldB="value2"
+
+| bin _time span=15m
+| stats count as event_count values(fieldE) as fieldE values(fieldF) as fieldF by _time fieldC fieldD
+
+| search event_count >= 10"""
+    ]
+
 def test_temporal_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
