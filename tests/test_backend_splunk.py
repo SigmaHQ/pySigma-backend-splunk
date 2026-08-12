@@ -344,6 +344,116 @@ def test_splunk_regex_group_name_keeps_suffix_when_truncated():
     assert field_match.endswith("Match2")
 
 
+def test_splunk_regex_query_with_named_capture_group(splunk_backend: SplunkBackend):
+    """Scalar |re values containing a named capture group are converted to a rex
+    extraction command in addition to the regex matching command."""
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    User|re: '(?P<user>\\S+)'
+                    CommandLine: foo
+                condition: sel
+        """
+            )
+        )
+        == [
+            'CommandLine="foo"'
+            '\n| regex User="(?P<user>\\\\S+)"'
+            '\n| rex field=User "(?<user>\\\\S+)"'
+        ]
+    )
+
+
+def test_splunk_single_regex_query_with_named_capture_group(
+    splunk_backend: SplunkBackend,
+):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    User|re: '(?P<user>\\S+)'
+                condition: sel
+        """
+            )
+        )
+        == [
+            "*"
+            '\n| regex User="(?P<user>\\\\S+)"'
+            '\n| rex field=User "(?<user>\\\\S+)"'
+        ]
+    )
+
+
+def test_splunk_regex_query_with_multiple_named_capture_groups(
+    splunk_backend: SplunkBackend,
+):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    User|re: '(?P<user>\\S+)\\.(?P<domain>\\S+)'
+                    CommandLine: foo
+                condition: sel
+        """
+            )
+        )
+        == [
+            'CommandLine="foo"'
+            '\n| regex User="(?P<user>\\\\S+)\\\\.(?P<domain>\\\\S+)"'
+            '\n| rex field=User "(?<user>\\\\S+)\\\\.(?<domain>\\\\S+)"'
+        ]
+    )
+
+
+def test_splunk_regex_query_named_capture_group_not_extracted_when_negated(
+    splunk_backend: SplunkBackend,
+):
+    """Negated regular expressions must keep the regex matching command but must
+    not emit a rex extraction, since the negated match has no usable capture."""
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    User: bar
+                filter:
+                    User|re: '(?P<user>\\S+)'
+                condition: sel and not filter
+        """
+            )
+        )
+        == ['User="bar"\n| regex User!="(?P<user>\\\\S+)"']
+    )
+
+
 def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
     assert (
         splunk_backend.convert(

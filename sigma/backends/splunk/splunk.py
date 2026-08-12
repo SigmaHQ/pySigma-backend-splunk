@@ -35,6 +35,23 @@ class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     default_field = "_raw"
 
 
+class SplunkDeferredRexExpression(DeferredTextQueryExpression):
+    """Deferred field extraction via Splunk ``rex`` command.
+
+    Used for scalar regular expressions that contain named capture groups
+    (``(?P<name>...)``). ``rex`` extracts the named groups into fields, but in
+    contrast to the ``regex`` command it does not filter events, so it is
+    emitted in addition to the matching ``regex`` command.
+    """
+
+    template = 'rex field={field} "{value}"'
+    operators = {
+        True: "=",
+        False: "=",
+    }
+    default_field = "_raw"
+
+
 class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
     field_counts = {}
     default_field = "_raw"
@@ -294,6 +311,23 @@ class SplunkBackend(TextQueryBackend):
             )  # cannot use \ in f-strings
         return output
 
+    # Matches a Python-style named capture group, e.g. (?P<user>\S+).
+    _named_group_re: ClassVar[Pattern] = re.compile(r"(?<!\\)\(\?P<(\w+)>")
+
+    def _as_splunk_named_group_syntax(self, regex: str) -> Optional[str]:
+        """Convert Python-style named capture groups in ``regex`` to Splunk's PCRE
+        syntax if any are present and not escaped, otherwise return None.
+
+        Sigma regular expressions use Python syntax (``(?P<name>...)``) while the
+        Splunk ``rex`` command uses PCRE syntax (``(?<name>...)``). PCRE accepts both
+        forms, but the Python form is converted for consistency with the group names
+        the backend generates itself. Escaped group parentheses (``\\(?P<``) are left
+        untouched so that literal matches are not rewritten.
+        """
+        if not self._named_group_re.search(regex):
+            return None
+        return self._named_group_re.sub(r"(?<\1>", regex)
+
     def convert_condition_field_eq_val_re(
         self,
         cond: ConditionFieldEqualsValueExpression,
@@ -315,9 +349,24 @@ class SplunkBackend(TextQueryBackend):
             )
             # returning fieldX=true
             return super().convert_condition_field_eq_val_str(cond_true, state)
-        return SplunkDeferredRegularExpression(
-            state, cond.field, super().convert_condition_field_eq_val_re(cond, state)
+
+        regex_value = super().convert_condition_field_eq_val_re(cond, state)
+        deferred_regex = SplunkDeferredRegularExpression(
+            state, cond.field, regex_value
         ).postprocess(None, cond)
+
+        # Scalar regular expressions containing named capture groups are turned
+        # into an additional rex extraction. rex only extracts fields and does
+        # not filter events, hence the regex command above is kept to preserve
+        # the matching semantics. Extraction is omitted for negated conditions.
+        if not cond.parent_condition_chain_contains(ConditionNOT):
+            splunk_regex = self._as_splunk_named_group_syntax(regex_value)
+            if splunk_regex is not None:
+                SplunkDeferredRexExpression(
+                    state, cond.field, splunk_regex
+                ).postprocess(None, cond)
+
+        return deferred_regex
 
     def convert_condition_field_eq_field(
         self,
