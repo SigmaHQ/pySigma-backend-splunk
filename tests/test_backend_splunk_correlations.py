@@ -334,8 +334,8 @@ correlation:
 | search event_count >= 10"""
     ]
 
-def test_correlation_rule_subrule_fields_not_in_output(splunk_backend):
-    """Test that sub-rule fields (| table) are not included in correlation queries."""
+def test_correlation_rule_subrule_fields_in_stats_output(splunk_backend):
+    """Test that sub-rule fields are retained as values() aggregations."""
     correlation_rule = SigmaCollection.from_yaml(
         """
 title: Base rule
@@ -370,7 +370,7 @@ correlation:
         """fieldA="value1"
 
 | bin _time span=15m
-| stats count as event_count by _time fieldC
+| stats count as event_count values(fieldA) as fieldA values(fieldB) as fieldB by _time fieldC
 
 | search event_count >= 10"""
     ]
