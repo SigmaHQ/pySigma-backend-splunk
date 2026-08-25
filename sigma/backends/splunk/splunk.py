@@ -297,9 +297,9 @@ class SplunkBackend(TextQueryBackend):
         """Format a settings dict into newline separated k=v string. Escape multi-line values."""
         output = ""
         for k, v in settings.items():
-            output += f"\n{k} = " + " \\\n".join(
-                v.split("\n")
-            )  # cannot use \ in f-strings
+            # Filter out empty lines to avoid invalid backslash-only lines in savedsearches.conf
+            lines = [line for line in v.split("\n") if line.strip()]
+            output += f"\n{k} = " + " \\\n".join(lines)  # cannot use \ in f-strings
         return output
 
     def convert_condition_field_eq_val_re(

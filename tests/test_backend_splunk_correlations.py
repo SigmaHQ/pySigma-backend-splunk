@@ -374,3 +374,52 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
+def test_event_count_correlation_rule_savedsearches(splunk_backend):
+    """Test correlation rule conversion to savedsearches format."""
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Multiple occurrences of base event
+description: Detects multiple occurrences of the base event
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+        - fieldD
+    timespan: 15m
+    condition:
+        gte: 10
+            """
+    )
+    result = splunk_backend.convert(correlation_rule, "savedsearches")
+    # Verify the stanza name is the correlation rule title, not the base rule title
+    assert "[Multiple occurrences of base event]" in result
+    assert "[Base rule]" not in result
+    # Verify the description is from the correlation rule
+    assert "description = Detects multiple occurrences of the base event" in result
+    # Verify proper line continuation with backslashes (no blank lines with just backslash)
+    assert " \\\n \\\n" not in result  # No blank lines with just space-backslash
+    # Verify the search query has proper escaping
+    lines = result.split("\n")
+    search_started = False
+    for line in lines:
+        if line.startswith("search = "):
+            search_started = True
+        if search_started and line.strip() == "\\":
+            # A line with just a backslash indicates improper blank line handling
+            assert False, "Found blank line with just backslash in search query"
+
