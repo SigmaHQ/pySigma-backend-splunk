@@ -243,9 +243,7 @@ class SplunkBackend(TextQueryBackend):
     correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
         "stats": " values({field}) as {field}"
     }
-    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {
-        "stats": ""
-    }
+    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {"stats": ""}
 
     timespan_mapping: ClassVar[Dict[str, str]] = {
         "M": "mon",
@@ -267,10 +265,10 @@ class SplunkBackend(TextQueryBackend):
     temporal_extended_condition_expression: ClassVar[dict[str, str]] = {
         "stats": "| search {extended_condition}"
     }
-    
-    extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
-        "stats": 'event_types="{ruleid}"'
-    }
+
+    extended_correlation_condition_rule_reference_expression: ClassVar[
+        dict[str, str]
+    ] = {"stats": 'event_types="{ruleid}"'}
 
     def __init__(
         self,
@@ -415,12 +413,7 @@ class SplunkBackend(TextQueryBackend):
             if prefix_parts:
                 prefix = " ".join(prefix_parts)
                 remaining_query = search_query[pos:]
-                query = (
-                    prefix
-                    + deferred_part
-                    + search_marker
-                    + remaining_query
-                )
+                query = prefix + deferred_part + search_marker + remaining_query
 
         if isinstance(rule, SigmaRule) and rule.fields:
             return query + " | table " + ",".join(rule.fields)
@@ -520,7 +513,9 @@ class SplunkBackend(TextQueryBackend):
             parts = data_model_set.split(".")
             if len(parts) != 2 or not all(parts):
                 raise SigmaFeatureNotSupportedByBackendError(
-                    "Expected format 'data_model.data_set', but got: {}".format(data_model_set)
+                    "Expected format 'data_model.data_set', but got: {}".format(
+                        data_model_set
+                    )
                 )
             data_set = parts[1]
 
