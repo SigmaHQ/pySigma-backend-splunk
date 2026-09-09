@@ -23,7 +23,7 @@ from sigma.pipelines.splunk.splunk import (
     splunk_dns_cim_mapping,
 )
 import sigma
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Set, Tuple, Union
 
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
@@ -272,6 +272,16 @@ class SplunkBackend(TextQueryBackend):
         "stats": 'event_types="{ruleid}"'
     }
 
+    # Splunk stats/tstats functions allowed in the `tstats_aggregations` data model setting.
+    data_model_aggregation_functions: ClassVar[Set[str]] = {
+        "avg", "dc", "distinct_count", "earliest", "estdc", "first", "last",
+        "latest", "list", "max", "mean", "median", "min", "mode", "range",
+        "stdev", "stdevp", "sum", "sumsq", "values", "var", "varp",
+        "per_day", "per_hour", "per_minute", "per_second",
+    }
+    _data_model_identifier_re: ClassVar[Pattern] = re.compile(r"^[\w.]+$")
+    _data_model_span_re: ClassVar[Pattern] = re.compile(r"^\d+[a-zA-Z]*$")
+
     def __init__(
         self,
         processing_pipeline: Optional[
@@ -280,11 +290,13 @@ class SplunkBackend(TextQueryBackend):
         collect_errors: bool = False,
         min_time: str = "-30d",
         max_time: str = "now",
+        summariesonly: bool = False,
         query_settings: Callable[[SigmaRule], Dict[str, str]] = lambda x: {},
         output_settings: Dict = {},
         **kwargs,
     ):
         super().__init__(processing_pipeline, collect_errors, **kwargs)
+        self.summariesonly = summariesonly
         self.query_settings = query_settings
         self.output_settings = {
             "dispatch.earliest_time": min_time,
@@ -557,13 +569,87 @@ class SplunkBackend(TextQueryBackend):
         if has_or_regex_deferred:
             deferred_part += search_marker + where_query
 
-        return f"""| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel={data_model_set} where {where_query} by {fields}{deferred_part}
+        summariesonly = self._data_model_summariesonly(state)
+        aggregation = self._data_model_aggregation(state)
+        time_prefix, span_suffix = self._data_model_span(state)
+
+        return f"""| tstats summariesonly={summariesonly} allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime{aggregation} from datamodel={data_model_set} where {where_query} by {time_prefix}{fields}{span_suffix}{deferred_part}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace(
             "\n", " "
         )
+
+    def _data_model_summariesonly(self, state: ConversionState) -> str:
+        """Resolve tstats `summariesonly` from pipeline state, falling back to the backend option."""
+        value = state.processing_state.get("summariesonly", self.summariesonly)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in ("true", "t", "yes", "1"):
+                return "true"
+            if normalized in ("false", "f", "no", "0"):
+                return "false"
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Invalid 'summariesonly' value for tstats data model query: {value!r}"
+            )
+        return self.bool_values[bool(value)]
+
+    def _data_model_aggregation(self, state: ConversionState) -> str:
+        """Render extra tstats aggregation functions from pipeline state, appended to the default count."""
+        raw = state.processing_state.get("tstats_aggregation")
+        if raw is not None:
+            raw = str(raw).strip()
+            return f" {raw}" if raw else ""
+        specs = state.processing_state.get("tstats_aggregations")
+        if not specs:
+            return ""
+        return "".join(
+            f" {self._render_data_model_aggregation(spec)}" for spec in specs
+        )
+
+    def _render_data_model_aggregation(self, spec: Dict[str, str]) -> str:
+        if not isinstance(spec, dict):
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Each 'tstats_aggregations' entry must be a mapping, got: {spec!r}"
+            )
+        func = str(spec.get("func", "")).strip().lower()
+        if func not in self.data_model_aggregation_functions:
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Unsupported tstats aggregation function: {spec.get('func')!r}"
+            )
+        field = spec.get("field")
+        if not field:
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"tstats aggregation function '{func}' requires a 'field'"
+            )
+        field = str(field).strip()
+        if not self._data_model_identifier_re.match(field):
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Invalid field name in 'tstats_aggregations': {field!r}"
+            )
+        token = f"{func}({field})"
+        alias = spec.get("as") or spec.get("alias")
+        if alias:
+            alias = str(alias).strip()
+            if not self._data_model_identifier_re.match(alias):
+                raise SigmaFeatureNotSupportedByBackendError(
+                    f"Invalid alias in 'tstats_aggregations': {alias!r}"
+                )
+            token += f" as {alias}"
+        return token
+
+    def _data_model_span(self, state: ConversionState) -> Tuple[str, str]:
+        """Return the `_time`/`span=` fragments for tstats time bucketing from pipeline state."""
+        span = state.processing_state.get("tstats_span")
+        if span is None:
+            return "", ""
+        span = str(span).strip()
+        if not self._data_model_span_re.match(span):
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Invalid 'tstats_span' value for tstats data model query: {span!r}"
+            )
+        return "_time ", f" span={span}"
 
     def finalize_output_data_model(self, queries: List[str]) -> List[str]:
         return queries
