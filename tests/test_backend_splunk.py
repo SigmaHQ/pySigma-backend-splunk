@@ -954,3 +954,314 @@ detection:
         SigmaFeatureNotSupportedByBackendError, match="No data model specified"
     ):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
+
+# --- Configurable data model (tstats) query settings -------------------------
+
+
+def test_splunk_data_model_summariesonly_backend_option():
+    splunk_backend = SplunkBackend(
+        processing_pipeline=splunk_cim_data_model(), summariesonly=True
+    )
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=true allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_summariesonly_pipeline_state_overrides_option():
+    # Pipeline processing state takes precedence over the backend option.
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_summariesonly
+              type: set_state
+              key: summariesonly
+              val: false
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline, summariesonly=True)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_summariesonly_invalid_string_raises():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_summariesonly
+              type: set_state
+              key: summariesonly
+              val: maybe
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="Invalid 'summariesonly'"
+    ):
+        splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
+
+def test_splunk_data_model_tstats_aggregations():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_aggregations
+              type: set_state
+              key: tstats_aggregations
+              val:
+                - func: values
+                  field: Processes.process_name
+                  as: process_names
+                - func: sum
+                  field: Processes.count
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime values(Processes.process_name) as process_names sum(Processes.count) from datamodel=Endpoint.Processes where
+Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_tstats_aggregation_raw_string():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_aggregation
+              type: set_state
+              key: tstats_aggregation
+              val: values(Processes.user) as users
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime values(Processes.user) as users from datamodel=Endpoint.Processes where
+Processes.process="test" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_tstats_aggregation_invalid_function_raises():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_aggregations
+              type: set_state
+              key: tstats_aggregations
+              val:
+                - func: eval
+                  field: Processes.user
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError,
+        match="Unsupported tstats aggregation function",
+    ):
+        splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
+
+def test_splunk_data_model_tstats_aggregation_invalid_field_raises():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_aggregations
+              type: set_state
+              key: tstats_aggregations
+              val:
+                - func: values
+                  field: "Processes.user | delete"
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="Invalid field name"
+    ):
+        splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
+
+def test_splunk_data_model_tstats_span():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_span
+              type: set_state
+              key: tstats_span
+              val: 1h
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    assert splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model") == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
+Processes.process="test" by _time Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user span=1h
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_tstats_span_invalid_raises():
+    pipeline = splunk_cim_data_model() + ProcessingPipeline.from_yaml(
+        """
+        name: Test
+        priority: 100
+        transformations:
+            - id: set_span
+              type: set_state
+              key: tstats_span
+              val: "1h | delete"
+        """
+    )
+    splunk_backend = SplunkBackend(processing_pipeline=pipeline)
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        CommandLine: test
+    condition: sel
+    """
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="Invalid 'tstats_span'"
+    ):
+        splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+
