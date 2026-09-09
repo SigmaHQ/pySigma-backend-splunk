@@ -32,7 +32,10 @@ The following are Splunk-specific extensions of the data model output and have n
 representation in the Sigma standard:
 
 * `tstats_span`: adds `_time` to the `by` clause and a `span=<value>` bucket, e.g.
-  `tstats_span: 1h`. The value must match `\d+[a-zA-Z]*`.
+  `tstats_span: 1h`. The value is a number followed by an optional Splunk time unit
+  (`s`, `sec`, `secs`, `second`, `seconds`, `m`, `min`, `mins`, `minute`, `minutes`,
+  `h`, `hr`, `hrs`, `hour`, `hours`, `d`, `day`, `days`, `mon`, `mont`, `months`); a bare
+  number (e.g. `30`) is treated as seconds.
 * `tstats_aggregations`: a list of additional aggregation functions appended after the
   default `count`. Each entry is a mapping with `func` (one of the supported Splunk stats
   functions, e.g. `values`, `sum`, `dc`), `field`, and an optional `as`/`alias`, e.g.
