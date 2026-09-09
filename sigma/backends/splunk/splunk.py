@@ -279,7 +279,9 @@ class SplunkBackend(TextQueryBackend):
         "stdev", "stdevp", "sum", "sumsq", "values", "var", "varp",
     }
     _data_model_identifier_re: ClassVar[Pattern] = re.compile(r"^[\w.]+$")
-    _data_model_span_re: ClassVar[Pattern] = re.compile(r"^\d+[a-zA-Z]*$")
+    _data_model_span_re: ClassVar[Pattern] = re.compile(
+        r"^\d+(?:s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|mon|mont|months)?$"
+    )
 
     def __init__(
         self,
