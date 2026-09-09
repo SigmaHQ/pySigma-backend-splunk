@@ -277,7 +277,6 @@ class SplunkBackend(TextQueryBackend):
         "avg", "dc", "distinct_count", "earliest", "estdc", "first", "last",
         "latest", "list", "max", "mean", "median", "min", "mode", "range",
         "stdev", "stdevp", "sum", "sumsq", "values", "var", "varp",
-        "per_day", "per_hour", "per_minute", "per_second",
     }
     _data_model_identifier_re: ClassVar[Pattern] = re.compile(r"^[\w.]+$")
     _data_model_span_re: ClassVar[Pattern] = re.compile(r"^\d+[a-zA-Z]*$")
