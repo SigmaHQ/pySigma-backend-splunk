@@ -78,7 +78,7 @@ def test_splunk_and_or_expression(splunk_backend: SplunkBackend):
         """
     )
     assert splunk_backend.convert(rule) == [
-        'fieldA IN ("valueA1", "valueA2") fieldB IN ("valueB1", "valueB2")'
+        '(fieldA IN ("valueA1", "valueA2")) (fieldB IN ("valueB1", "valueB2"))'
     ]
 
 
@@ -101,7 +101,31 @@ def test_splunk_or_and_expression(splunk_backend: SplunkBackend):
         """
     )
     assert splunk_backend.convert(rule) == [
-        '(fieldA="valueA1" fieldB="valueB1") OR (fieldA="valueA2" fieldB="valueB2")'
+        'fieldA="valueA1" fieldB="valueB1" OR fieldA="valueA2" fieldB="valueB2"'
+    ]
+
+
+def test_splunk_or_nested_in_and_expression(splunk_backend: SplunkBackend):
+    """An OR nested inside an AND must be parenthesized: implicit AND (juxtaposition)
+    binds tighter than OR in SPL, so an ungrouped OR would silently widen the query."""
+    rule = SigmaCollection.from_yaml(
+        """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                selection_img:
+                    - Image|endswith: '\\net.exe'
+                    - OriginalFileName: 'net.exe'
+                selection_cli:
+                    CommandLine|contains: ' localgroup'
+                condition: selection_img and selection_cli
+        """
+    )
+    assert splunk_backend.convert(rule) == [
+        '(Image="*\\\\net.exe" OR OriginalFileName="net.exe") CommandLine="* localgroup*"'
     ]
 
 
@@ -195,7 +219,7 @@ def test_splunk_regex_query_implicit_or(splunk_backend: SplunkBackend):
             )
         )
         == [
-            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldA "(?<fieldAMatch2>boo.*foo)"\n| eval fieldACondition2=if(isnotnull(fieldAMatch2), "true", "false")\n| search fieldACondition="true" OR fieldACondition2="true" fieldB="foo" fieldC="bar"'
+            '\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldA "(?<fieldAMatch2>boo.*foo)"\n| eval fieldACondition2=if(isnotnull(fieldAMatch2), "true", "false")\n| search (fieldACondition="true" OR fieldACondition2="true") fieldB="foo" fieldC="bar"'
         ]
     )
 
@@ -302,7 +326,7 @@ def test_splunk_regex_query_explicit_or_with_add_condition():
     )
 
     assert splunk_backend.convert(collection) == [
-        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search (EventID=4688 CommandLineCondition="true") OR ImageCondition="true"'
+        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search (EventID=4688 CommandLineCondition="true" OR ImageCondition="true")'
     ]
 
 
@@ -409,7 +433,7 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8" fieldB="foo" fieldC="bar"']
+        == ['(fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8") fieldB="foo" fieldC="bar"']
     )
 
 
@@ -923,11 +947,11 @@ detection:
     result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
     assert result == [
         """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
-Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path="*explorer.exe" (Processes.process="*test_value*" OR processCondition="true") by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
 Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
 | rex field=Processes.process "(?<processMatch>foo.*bar)"
 | eval processCondition=if(isnotnull(processMatch), "true", "false")
-| search Processes.parent_process_path="*explorer.exe" Processes.process="*test_value*" OR processCondition="true"
+| search Processes.parent_process_path="*explorer.exe" (Processes.process="*test_value*" OR processCondition="true")
 | `drop_dm_object_name(Processes)`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)

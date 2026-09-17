@@ -51,9 +51,9 @@ def test_splunk_windows_pipeline_simple(service, source):
                 )
             )
             == [
-                "source IN ("
+                "(source IN ("
                 + ", ".join((f'"WinEventLog:{source_item}"' for source_item in source))
-                + ') EventCode=123 field="value"'
+                + ')) EventCode=123 field="value"'
             ]
         )
 
