@@ -330,6 +330,39 @@ def test_splunk_regex_query_explicit_or_with_add_condition():
     ]
 
 
+def test_splunk_disjunction_with_deferred_regex_no_search_or():
+    """Regression test: a top-level disjunction where one branch carries a |re modifier
+    must not produce '| search OR ...' (issue #74).  The query must be valid SPL and
+    semantically equivalent to the authored condition."""
+    splunk_backend = SplunkBackend()
+    collection = SigmaCollection.from_yaml(
+        """
+        title: Test
+        status: test
+        logsource:
+            category: test_category
+            product: test_product
+        detection:
+            selection_a:
+                fieldA|endswith: 'hdiutil.exe'
+            selection_b:
+                fieldA|endswith: 'openssl.exe'
+            filter_decrypt:
+                fieldB|re: '(?i)(?:-d|--decrypt)'
+            condition: selection_a or (selection_b and not filter_decrypt)
+        """
+    )
+    result = splunk_backend.convert(collection)
+    assert len(result) == 1
+    query = result[0]
+    # The trailing | search clause must not start with OR
+    assert "\n| search OR" not in query
+    # The full disjunction must appear in the final | search stage
+    assert 'fieldA="*hdiutil.exe"' in query
+    assert 'fieldA="*openssl.exe"' in query
+    assert 'NOT fieldBCondition="true"' in query
+
+
 def test_splunk_regex_group_name_is_capped_for_long_fields():
     SplunkDeferredORRegularExpression.reset()
     field = "msg_normalized_header_subject"
