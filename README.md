@@ -15,6 +15,35 @@ It supports the following output formats:
 * default: plain Splunk queries
 * savedsearches: Splunk savedsearches.conf format.
 
+## Data model (tstats) query settings
+
+The `data_model` output format generates accelerated `tstats` queries against a Splunk data
+model. The following settings let you tune the generated query without changing the Sigma
+rules themselves. They are read from the pipeline processing state (set with a
+`SetStateTransformation` / the `set_state` pipeline item), so detection logic stays separate
+from environment-specific query configuration. Defaults keep the generated query unchanged.
+
+* `summariesonly` (also available as the `summariesonly` backend option, e.g.
+  `-O summariesonly=true` with sigma-cli): controls the `tstats summariesonly=...` flag.
+  Accepts a boolean or a string (`true`/`false`). When both are set, the pipeline
+  processing state takes precedence over the backend option. Default: `false`.
+
+The following are Splunk-specific extensions of the data model output and have no direct
+representation in the Sigma standard:
+
+* `tstats_span`: adds `_time` to the `by` clause and a `span=<value>` bucket, e.g.
+  `tstats_span: 1h`. The value is a number followed by an optional Splunk time unit
+  (`s`, `sec`, `secs`, `second`, `seconds`, `m`, `min`, `mins`, `minute`, `minutes`,
+  `h`, `hr`, `hrs`, `hour`, `hours`, `d`, `day`, `days`, `mon`, `mont`, `months`); a bare
+  number (e.g. `30`) is treated as seconds.
+* `tstats_aggregations`: a list of additional aggregation functions appended after the
+  default `count`. Each entry is a mapping with `func` (one of the supported Splunk stats
+  functions, e.g. `values`, `sum`, `dc`), `field`, and an optional `as`/`alias`, e.g.
+  `[{func: values, field: Processes.process_name, as: process_names}]`. `count` is always
+  present and cannot be redefined here.
+* `tstats_aggregation`: a raw aggregation string appended verbatim after `count` (advanced
+  use). When set, it takes precedence over `tstats_aggregations`.
+
 This backend is currently maintained by:
 
 * [Thomas Patzke](https://github.com/thomaspatzke/)
