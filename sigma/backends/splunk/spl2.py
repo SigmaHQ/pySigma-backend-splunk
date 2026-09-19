@@ -26,8 +26,8 @@ class SplunkSPL2Backend(TextQueryBackend):
 
     precedence: ClassVar[Tuple[ConditionItem, ConditionItem, ConditionItem]] = (
         ConditionNOT,
-        ConditionOR,
         ConditionAND,
+        ConditionOR,
     )
     group_expression: ClassVar[str] = "({expr})"
 

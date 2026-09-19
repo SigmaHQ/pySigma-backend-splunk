@@ -69,7 +69,7 @@ def test_spl2_and_or_expression(spl2_backend: SplunkSPL2Backend):
         """
     )
     assert spl2_backend.convert(rule) == [
-        'FROM main WHERE fieldA IN ("valueA1", "valueA2") AND fieldB IN ("valueB1", "valueB2")'
+        'FROM main WHERE (fieldA IN ("valueA1", "valueA2")) AND (fieldB IN ("valueB1", "valueB2"))'
     ]
 
 
@@ -92,7 +92,7 @@ def test_spl2_or_and_expression(spl2_backend: SplunkSPL2Backend):
         """
     )
     assert spl2_backend.convert(rule) == [
-        'FROM main WHERE (fieldA="valueA1" AND fieldB="valueB1") OR (fieldA="valueA2" AND fieldB="valueB2")'
+        'FROM main WHERE fieldA="valueA1" AND fieldB="valueB1" OR fieldA="valueA2" AND fieldB="valueB2"'
     ]
 
 
