@@ -425,9 +425,13 @@ class SplunkBackend(TextQueryBackend):
                 else:
                     break
 
-            if prefix_parts:
+            remaining_query = search_query[pos:]
+            # If the remaining query starts with OR we would split a disjunction
+            # across the pipeline boundary, making the query semantically wrong.
+            # In that case, skip hoisting so the full disjunction stays intact in
+            # the trailing | search stage.
+            if prefix_parts and not remaining_query.lstrip().startswith("OR"):
                 prefix = " ".join(prefix_parts)
-                remaining_query = search_query[pos:]
                 query = (
                     prefix
                     + deferred_part
