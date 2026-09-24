@@ -363,6 +363,50 @@ def test_splunk_disjunction_with_deferred_regex_no_search_or():
     assert 'NOT fieldBCondition="true"' in query
 
 
+def test_splunk_or_regex_dotted_fields_same_suffix(splunk_backend: SplunkBackend):
+    """Fields a.x and b.x both clean to "x"; they must not share the rex/eval
+    variables, otherwise the second eval overwrites the first."""
+    SplunkDeferredORRegularExpression.reset()
+    result = splunk_backend.convert(
+        SigmaCollection.from_yaml(
+            """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel_a:
+                    a.x|re: 'A'
+                filter_b:
+                    b.x|re: 'B'
+                condition: sel_a or not filter_b
+        """
+        )
+    )
+    assert result == [
+        '\n| rex field=a.x "(?<xMatch>A)"'
+        '\n| eval xCondition=if(isnotnull(xMatch), "true", "false")'
+        '\n| rex field=b.x "(?<xMatch2>B)"'
+        '\n| eval xCondition2=if(isnotnull(xMatch2), "true", "false")'
+        '\n| search xCondition="true" OR NOT xCondition2="true"'
+    ]
+
+
+def test_splunk_or_regex_dotted_fields_condition_names():
+    SplunkDeferredORRegularExpression.reset()
+    SplunkDeferredORRegularExpression.add_field("a.x")
+    assert SplunkDeferredORRegularExpression.get_field_condition("a.x") == "xCondition"
+    SplunkDeferredORRegularExpression.add_field("b.x")
+    assert SplunkDeferredORRegularExpression.get_field_condition("b.x") == "xCondition2"
+    assert SplunkDeferredORRegularExpression.get_field_match("b.x") == "xMatch2"
+    assert SplunkDeferredORRegularExpression.get_all_condition_fields() == {
+        "xCondition",
+        "xCondition2",
+    }
+    SplunkDeferredORRegularExpression.reset()
+
+
 def test_splunk_regex_group_name_is_capped_for_long_fields():
     SplunkDeferredORRegularExpression.reset()
     field = "msg_normalized_header_subject"
