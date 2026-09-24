@@ -532,8 +532,73 @@ def test_spl2_example_simple_rule(spl2_backend: SplunkSPL2Backend):
     )
     result = spl2_backend.convert(rule)
     assert result == [
-        'FROM main WHERE ParentImage LIKE "%\\httpd.exe" AND Image LIKE "%\\cmd.exe"'
+        'FROM main WHERE ParentImage LIKE "%\\\\httpd.exe" AND Image LIKE "%\\\\cmd.exe"'
     ]
+
+
+def test_spl2_backslash_escaping(spl2_backend: SplunkSPL2Backend):
+    """Literal backslashes must be escaped, including a trailing one."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: 'C:\Temp\'
+                    fieldB|endswith: 'Temp\'
+                    fieldC|contains: '\a.exe'
+                keywords:
+                    - 'Temp\'
+                condition: sel or keywords
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [
+        r'FROM main WHERE fieldA="C:\\Temp\\" AND fieldB LIKE "%Temp\\" AND '
+        r'fieldC LIKE "%\\a.exe%" OR _raw LIKE "%Temp\\%"'
+    ]
+
+
+def test_spl2_backslash_quote_cannot_break_out_of_string(spl2_backend: SplunkSPL2Backend):
+    """A backslash followed by a quote must not terminate the string literal."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    Image: 'x\" OR true //'
+                condition: sel
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [r'FROM main WHERE Image="x\\\" OR true //"']
+
+
+def test_spl2_backslash_before_next_value_in_or(spl2_backend: SplunkSPL2Backend):
+    """A trailing backslash must not swallow the closing quote of the next value."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    - fieldA: 'a\'
+                    - fieldB: ' OR true OR fieldB='
+                condition: sel
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [r'FROM main WHERE fieldA="a\\" OR fieldB=" OR true OR fieldB="']
 
 
 def test_spl2_example_exists_check(spl2_backend: SplunkSPL2Backend):
