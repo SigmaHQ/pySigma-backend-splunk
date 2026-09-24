@@ -60,13 +60,16 @@ class SplunkDeferredORRegularExpression(DeferredTextQueryExpression):
 
     @classmethod
     def add_field(cls, field):
-        cls.field_counts[field] = (
-            cls.field_counts.get(field, 0) + 1
+        # Count by the cleaned name: fields like a.x and b.x both map to the
+        # variable prefix "x" and must get different suffixes.
+        cleaned_field = cls.clean_field(field)
+        cls.field_counts[cleaned_field] = (
+            cls.field_counts.get(cleaned_field, 0) + 1
         )  # increment the field count
 
     @classmethod
     def get_field_suffix(cls, field):
-        index_suffix = cls.field_counts.get(field, "")
+        index_suffix = cls.field_counts.get(cls.clean_field(field), "")
         if index_suffix == 1:
             index_suffix = ""
         return index_suffix
