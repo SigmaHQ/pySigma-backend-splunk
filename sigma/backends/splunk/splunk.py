@@ -573,17 +573,94 @@ class SplunkBackend(TextQueryBackend):
         # Re-add the search command after deferred expressions for OR regex filtering
         if has_or_regex_deferred:
             deferred_part += search_marker + where_query
+            # The <field>Condition variables are only created by the eval commands
+            # after tstats, so they must not be referenced inside the tstats WHERE
+            # clause. Keep only the conjuncts that do not depend on them there; the
+            # full expression is applied by the trailing search command.
+            where_query = self._data_model_where_without_fields(
+                where_query,
+                state.processing_state.get("deferred_or_condition_fields", set()),
+            )
+        where_clause = f" where {where_query}" if where_query else ""
 
         summariesonly = self._data_model_summariesonly(state)
         aggregation = self._data_model_aggregation(state)
         time_prefix, span_suffix = self._data_model_span(state)
 
-        return f"""| tstats summariesonly={summariesonly} allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime{aggregation} from datamodel={data_model_set} where {where_query} by {time_prefix}{fields}{span_suffix}{deferred_part}
+        return f"""| tstats summariesonly={summariesonly} allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime{aggregation} from datamodel={data_model_set}{where_clause} by {time_prefix}{fields}{span_suffix}{deferred_part}
 | `drop_dm_object_name({data_set})`
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
 | convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
 """.replace(
             "\n", " "
+        )
+
+    @staticmethod
+    def _data_model_where_without_fields(query: str, fields: Set[str]) -> str:
+        """
+        Return the top-level conjuncts of a search expression that do not reference
+        any of the given fields, joined with a space. If the expression has an OR at
+        top level, it is a single conjunct. The result is implied by the original
+        expression, so it can be used as a pre-filter.
+        """
+        # Split into atoms at whitespace outside quotes and parentheses.
+        atoms = []
+        current = ""
+        depth = 0
+        in_quote = False
+        escaped = False
+        for c in query:
+            if in_quote:
+                current += c
+                if escaped:
+                    escaped = False
+                elif c == "\\":
+                    escaped = True
+                elif c == '"':
+                    in_quote = False
+                continue
+            if c.isspace() and depth == 0:
+                if current:
+                    atoms.append(current)
+                current = ""
+                continue
+            if c == '"':
+                in_quote = True
+            elif c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            current += c
+        if current:
+            atoms.append(current)
+
+        # Group atoms into conjuncts: NOT binds to the following atom and
+        # "field IN (...)" is a single conjunct.
+        if "OR" in atoms:
+            conjuncts = [query]
+        else:
+            conjuncts = []
+            i = 0
+            while i < len(atoms):
+                if atoms[i] == "NOT" and i + 1 < len(atoms):
+                    conjunct = [atoms[i], atoms[i + 1]]
+                    i += 2
+                else:
+                    conjunct = [atoms[i]]
+                    i += 1
+                while i + 1 < len(atoms) and atoms[i] == "IN":
+                    conjunct += [atoms[i], atoms[i + 1]]
+                    i += 2
+                conjuncts.append(" ".join(conjunct))
+
+        field_refs = [
+            re.compile(r"(?<![\w.])" + re.escape(field) + r"\s*[=!<>]")
+            for field in fields
+        ]
+        return " ".join(
+            conjunct
+            for conjunct in conjuncts
+            if not any(field_ref.search(conjunct) for field_ref in field_refs)
         )
 
     def _data_model_summariesonly(self, state: ConversionState) -> str:
