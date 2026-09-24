@@ -980,7 +980,7 @@ detection:
     result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
     assert result == [
         """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes where
-Processes.parent_process_path="*explorer.exe" (Processes.process="*test_value*" OR processCondition="true") by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path="*explorer.exe" by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
 Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
 | rex field=Processes.process "(?<processMatch>foo.*bar)"
 | eval processCondition=if(isnotnull(processMatch), "true", "false")
@@ -992,6 +992,91 @@ Processes.parent_process_path Processes.parent_process_guid Processes.parent_pro
             "\n", " "
         )
     ]
+
+
+def test_splunk_data_model_process_creation_with_top_level_or_regex():
+    """The eval-created processCondition variable does not exist inside tstats, so
+    a disjunction that references it must not be used as tstats WHERE filter."""
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel_cmd:
+        CommandLine|re: foo.*bar
+    sel_img:
+        Image: x.exe
+    condition: 1 of sel_*
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert result == [
+        """| tstats summariesonly=false allow_old_summaries=true fillnull_value="null" count min(_time) as firstTime max(_time) as lastTime from datamodel=Endpoint.Processes
+by Processes.process Processes.dest Processes.process_current_directory Processes.process_path Processes.process_integrity_level Processes.original_file_name Processes.parent_process
+Processes.parent_process_path Processes.parent_process_guid Processes.parent_process_id Processes.process_guid Processes.process_id Processes.user
+| rex field=Processes.process "(?<processMatch>foo.*bar)"
+| eval processCondition=if(isnotnull(processMatch), "true", "false")
+| search processCondition="true" OR Processes.process_path="x.exe"
+| `drop_dm_object_name(Processes)`
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(firstTime)
+| convert timeformat="%Y-%m-%dT%H:%M:%S" ctime(lastTime)
+""".replace(
+            "\n", " "
+        )
+    ]
+
+
+def test_splunk_data_model_or_regex_keeps_independent_conjuncts():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = """
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel_cmd:
+        - CommandLine|re: foo.*bar
+        - Image: x.exe
+    sel_parent:
+        ParentImage:
+            - p1.exe
+            - p2.exe
+    filter:
+        User: admin
+    condition: sel_cmd and sel_parent and not filter
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    tstats_where = result[0].split(" where ", 1)[1].split(" by ", 1)[0]
+    assert (
+        tstats_where
+        == '(Processes.parent_process_path IN ("p1.exe", "p2.exe")) NOT Processes.user="admin"'
+    )
+    assert "processCondition" not in tstats_where
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ('a="1" xCondition="true"', 'a="1"'),
+        ('a="1" OR xCondition="true"', ""),
+        ('a="1" (b="2" OR xCondition="true")', 'a="1"'),
+        ('NOT xCondition="true" b IN ("1", "2")', 'b IN ("1", "2")'),
+        ('NOT b IN ("1", "2") xCondition2="true"', 'NOT b IN ("1", "2")'),
+        # conservative: a quoted value that looks like a reference is also dropped
+        ('a="1" b="xCondition=\\"true\\" c"', 'a="1"'),
+        ('a="1" b="2"', 'a="1" b="2"'),
+    ],
+)
+def test_splunk_data_model_where_without_fields(query, expected):
+    assert (
+        SplunkBackend._data_model_where_without_fields(
+            query, {"xCondition", "xCondition2"}
+        )
+        == expected
+    )
 
 
 def test_splunk_data_model_no_data_model_specified():
