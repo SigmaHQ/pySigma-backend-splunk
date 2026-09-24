@@ -101,13 +101,13 @@ def test_splunk_or_and_expression(splunk_backend: SplunkBackend):
         """
     )
     assert splunk_backend.convert(rule) == [
-        'fieldA="valueA1" fieldB="valueB1" OR fieldA="valueA2" fieldB="valueB2"'
+        '(fieldA="valueA1" fieldB="valueB1") OR (fieldA="valueA2" fieldB="valueB2")'
     ]
 
 
 def test_splunk_or_nested_in_and_expression(splunk_backend: SplunkBackend):
-    """An OR nested inside an AND must be parenthesized: implicit AND (juxtaposition)
-    binds tighter than OR in SPL, so an ungrouped OR would silently widen the query."""
+    """An OR nested inside an AND must be parenthesized, otherwise the ungrouped OR
+    changes the meaning of the query. See also the AND-nested-in-OR test below."""
     rule = SigmaCollection.from_yaml(
         """
             title: Test
@@ -126,6 +126,58 @@ def test_splunk_or_nested_in_and_expression(splunk_backend: SplunkBackend):
     )
     assert splunk_backend.convert(rule) == [
         '(Image="*\\\\net.exe" OR OriginalFileName="net.exe") CommandLine="* localgroup*"'
+    ]
+
+
+def test_splunk_and_nested_in_or_expression(splunk_backend: SplunkBackend):
+    """An AND nested inside an OR must be parenthesized as well. The Splunk search
+    command documents its evaluation order as parentheses, NOT, OR, AND, so without
+    grouping `A B OR C D` would be read as `A AND (B OR C) AND D`."""
+    rule = SigmaCollection.from_yaml(
+        """
+            title: Test
+            status: test
+            logsource:
+                product: azure
+                service: signinlogs
+            detection:
+                selection_50074:
+                    ResultType: 50074
+                    ResultDescription|contains: 'Strong Auth required'
+                selection_500121:
+                    ResultType: 500121
+                    ResultDescription|contains: 'Authentication failed during strong authentication request'
+                condition: 1 of selection_*
+        """
+    )
+    assert splunk_backend.convert(rule) == [
+        '(ResultType=50074 ResultDescription="*Strong Auth required*") OR '
+        '(ResultType=500121 ResultDescription="*Authentication failed during strong authentication request*")'
+    ]
+
+
+def test_splunk_mixed_and_or_nesting_always_grouped(splunk_backend: SplunkBackend):
+    rule = SigmaCollection.from_yaml(
+        """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                a:
+                    fieldA: valueA
+                b:
+                    fieldB: valueB
+                c:
+                    fieldC: valueC
+                d:
+                    fieldD: valueD
+                condition: (a and (b or c)) or d
+        """
+    )
+    assert splunk_backend.convert(rule) == [
+        '(fieldA="valueA" (fieldB="valueB" OR fieldC="valueC")) OR fieldD="valueD"'
     ]
 
 
@@ -326,7 +378,7 @@ def test_splunk_regex_query_explicit_or_with_add_condition():
     )
 
     assert splunk_backend.convert(collection) == [
-        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search (EventID=4688 CommandLineCondition="true" OR ImageCondition="true")'
+        'index="test" source="test"\n| rex field=CommandLine "(?<CommandLineMatch>suspicious_command)"\n| eval CommandLineCondition=if(isnotnull(CommandLineMatch), "true", "false")\n| rex field=Image "(?<ImageMatch>suspicious_command)"\n| eval ImageCondition=if(isnotnull(ImageMatch), "true", "false")\n| search ((EventID=4688 CommandLineCondition="true") OR ImageCondition="true")'
     ]
 
 
@@ -361,6 +413,66 @@ def test_splunk_disjunction_with_deferred_regex_no_search_or():
     assert 'fieldA="*hdiutil.exe"' in query
     assert 'fieldA="*openssl.exe"' in query
     assert 'NOT fieldBCondition="true"' in query
+
+
+_AND_REGEX_OR_RULE = """
+    title: Test
+    status: test
+    logsource:
+        category: test_category
+        product: test_product
+    detection:
+        a:
+            fieldA: valueA
+        b:
+            fieldB|re: 'foo.*bar'
+        c:
+            fieldC: valueC
+        condition: (a and b) or c
+"""
+
+
+def test_splunk_no_hoisting_out_of_disjunction(splunk_backend: SplunkBackend):
+    """A term of one OR branch must not be moved in front of the rex/eval pipeline,
+    where it would become a conjunct of the whole disjunction."""
+    assert splunk_backend.convert(SigmaCollection.from_yaml(_AND_REGEX_OR_RULE)) == [
+        '\n| rex field=fieldB "(?<fieldBMatch>foo.*bar)"'
+        '\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")'
+        '\n| search (fieldA="valueA" fieldBCondition="true") OR fieldC="valueC"'
+    ]
+
+
+def test_splunk_no_hoisting_out_of_ungrouped_disjunction():
+    """Hoisting must also be skipped if the disjunction is not parenthesized. The
+    subclass disables the AND-in-OR grouping to exercise the hoisting guard alone."""
+    from sigma.conversion.base import TextQueryBackend
+
+    class UngroupedSplunkBackend(SplunkBackend):
+        compare_precedence = TextQueryBackend.compare_precedence
+
+    query = UngroupedSplunkBackend().convert(
+        SigmaCollection.from_yaml(_AND_REGEX_OR_RULE)
+    )[0]
+    assert query.startswith("\n| rex field=fieldB ")
+    assert query.endswith(
+        '\n| search fieldA="valueA" fieldBCondition="true" OR fieldC="valueC"'
+    )
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ('a="1" b="2"', False),
+        ('a="1" OR b="2"', True),
+        ('a="1" (b="2" OR c="3")', False),
+        ('(a="1" b="2") OR c="3"', True),
+        ('a="x OR y" b="2"', False),
+        ('a="x \\" OR y" b="2"', False),
+        ('a IN ("1", "2") NOT b="3"', False),
+    ],
+)
+def test_splunk_has_top_level_or(query, expected):
+    assert SplunkBackend._has_top_level_or(query) is expected
 
 
 def test_splunk_regex_group_name_is_capped_for_long_fields():
