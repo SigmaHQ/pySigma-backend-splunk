@@ -374,3 +374,53 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
+
+def test_temporal_extended_correlation_and_nested_in_or(splunk_backend):
+    """The extended condition is evaluated by the search command, so an AND nested in
+    an OR must be grouped there too."""
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule 1
+name: base_rule_1
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+    condition: selection
+---
+title: Base rule 2
+name: base_rule_2
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value2
+    condition: selection
+---
+title: Base rule 3
+name: base_rule_3
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value3
+    condition: selection
+---
+title: Temporal correlation rule
+status: test
+correlation:
+    type: temporal
+    group-by:
+        - fieldC
+    condition: (base_rule_1 and base_rule_2) or base_rule_3
+    timespan: 15m
+"""
+    )
+    assert splunk_backend.convert(correlation_rule)[0].endswith(
+        '| search (event_types="base_rule_1"   event_types="base_rule_2") OR event_types="base_rule_3"'
+    )
