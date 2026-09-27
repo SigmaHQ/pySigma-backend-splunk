@@ -2,7 +2,11 @@ import hashlib
 import re
 from sigma.conversion.state import ConversionState
 from sigma.modifiers import SigmaRegularExpression
-from sigma.correlations import SigmaCorrelationRule
+from sigma.correlations import (
+    SigmaCorrelationRule,
+    CorrelationConditionAND,
+    CorrelationConditionOR,
+)
 from sigma.rule import SigmaRule, SigmaDetection
 from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
@@ -315,6 +319,22 @@ class SplunkBackend(TextQueryBackend):
             )  # cannot use \ in f-strings
         return output
 
+    def compare_precedence(self, outer, inner) -> bool:
+        """
+        Always group an AND nested inside an OR (and, via the precedence tuple, an OR nested
+        inside an AND).
+
+        The Splunk `search` command documents its Boolean evaluation order as parentheses,
+        NOT, OR, AND, i.e. OR binds tighter than the implicit AND, which is the opposite of
+        the order used by `eval`/`where`. Grouping every mixed AND/OR nesting makes the
+        emitted query independent of which of the two orders applies.
+        """
+        if isinstance(outer, (ConditionOR, CorrelationConditionOR)) and isinstance(
+            inner, (ConditionAND, CorrelationConditionAND)
+        ):
+            return False
+        return super().compare_precedence(outer, inner)
+
     def convert_condition_field_eq_val_re(
         self,
         cond: ConditionFieldEqualsValueExpression,
@@ -394,6 +414,39 @@ class SplunkBackend(TextQueryBackend):
 
         return super().finish_query(rule, query, state)
 
+    @staticmethod
+    def _has_top_level_or(query: str) -> bool:
+        """Return True if query contains an OR token outside of quotes and parentheses."""
+        depth = 0
+        in_quote = False
+        escaped = False
+        token = ""
+        for c in query + " ":
+            if in_quote:
+                if escaped:
+                    escaped = False
+                elif c == "\\":
+                    escaped = True
+                elif c == '"':
+                    in_quote = False
+                continue
+            if c == '"':
+                in_quote = True
+                token = ""
+            elif c == "(":
+                depth += 1
+                token = ""
+            elif c == ")":
+                depth -= 1
+                token = ""
+            elif c.isspace():
+                if token == "OR" and depth == 0:
+                    return True
+                token = ""
+            else:
+                token += c
+        return False
+
     def finalize_query_default(
         self,
         rule: Union[SigmaRule, SigmaCorrelationRule],
@@ -426,11 +479,12 @@ class SplunkBackend(TextQueryBackend):
                     break
 
             remaining_query = search_query[pos:]
-            # If the remaining query starts with OR we would split a disjunction
-            # across the pipeline boundary, making the query semantically wrong.
-            # In that case, skip hoisting so the full disjunction stays intact in
-            # the trailing | search stage.
-            if prefix_parts and not remaining_query.lstrip().startswith("OR"):
+            # Hoisting a term in front of the pipeline makes it a conjunct of the
+            # whole search. That is only equivalent if the search expression is a
+            # top-level conjunction; if it contains an OR outside of parentheses,
+            # hoisting would move a term out of a disjunction branch, so the full
+            # expression stays intact in the trailing | search stage.
+            if prefix_parts and not self._has_top_level_or(search_query):
                 prefix = " ".join(prefix_parts)
                 query = (
                     prefix
