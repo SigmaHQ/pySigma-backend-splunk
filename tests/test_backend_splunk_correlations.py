@@ -421,6 +421,7 @@ correlation:
     timespan: 15m
 """
     )
-    assert splunk_backend.convert(correlation_rule)[0].endswith(
-        '| search (event_types="base_rule_1"   event_types="base_rule_2") OR event_types="base_rule_3"'
+    query = splunk_backend.convert(correlation_rule)[0]
+    assert " ".join(query.split()).endswith(
+        '| search (event_types="base_rule_1" event_types="base_rule_2") OR event_types="base_rule_3"'
     )
