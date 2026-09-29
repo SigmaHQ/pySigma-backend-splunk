@@ -44,6 +44,24 @@ representation in the Sigma standard:
 * `tstats_aggregation`: a raw aggregation string appended verbatim after `count` (advanced
   use). When set, it takes precedence over `tstats_aggregations`.
 
+## Correlation methods
+
+Correlation rules (`event_count`, `value_count`, `temporal`) can be converted with two
+methods, selected with the `correlation_method` argument of `convert()` (sigma-cli:
+`--correlation-method`):
+
+* `stats` (default): `| bin _time span=<timespan> | stats ... by _time ...`. The timespan is a
+  fixed bucket, so events that belong together but fall into two adjacent buckets (e.g. at
+  10:04:59 and 10:05:01 with `timespan: 5m`) are not correlated.
+* `streamstats`: `| sort 0 _time | streamstats time_window=<timespan> ...`. This is the sliding
+  window of the Sigma correlation specification: every event is annotated with the aggregate of
+  the events of its group in the preceding timespan, and every event whose window matches the
+  condition is returned. It needs a time-ordered result set (hence the `sort`) and is subject to
+  the `max_stream_window` limit in `limits.conf`. Lower-bound conditions (`gt`, `gte`) and
+  positive rule references are evaluated exactly; upper-bound conditions and negated rule
+  references in extended temporal conditions are evaluated on the window that ends at each
+  event.
+
 This backend is currently maintained by:
 
 * [Thomas Patzke](https://github.com/thomaspatzke/)

@@ -211,11 +211,15 @@ class SplunkBackend(TextQueryBackend):
     # Correlations
     correlation_methods: ClassVar[Dict[str, str]] = {
         "stats": "Correlation using stats command (more efficient, static time window)",
-        # "transaction": "Correlation using transaction command (less efficient, sliding time window",
+        "streamstats": (
+            "Correlation using streamstats command (sliding time window, "
+            "emits every event whose trailing window matches the condition)"
+        ),
     }
     default_correlation_method: ClassVar[str] = "stats"
     default_correlation_query: ClassVar[str] = {
-        "stats": "{search}\n\n{aggregate}\n\n{condition}"
+        "stats": "{search}\n\n{aggregate}\n\n{condition}",
+        "streamstats": "{search}\n\n{aggregate}\n\n{condition}",
     }
 
     correlation_search_single_rule_expression: ClassVar[str] = "{query}"
@@ -230,50 +234,79 @@ class SplunkBackend(TextQueryBackend):
     )
     correlation_search_field_normalization_expression_joiner: ClassVar[str] = ""
 
+    # The "stats" method buckets events into fixed, non-overlapping windows. The
+    # "streamstats" method implements the sliding window of the Sigma correlation
+    # specification: for every event, the aggregate covers the events of the same
+    # group within the preceding timespan. streamstats time_window requires the
+    # events to be ordered by time, so they are sorted explicitly (multisearch does
+    # not guarantee a time-ordered output).
     event_count_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats count as event_count{fields} by _time{groupby}",
+        "streamstats": "| sort 0 _time\n| streamstats time_window={timespan} count as event_count{fields}{groupby}",
     }
     value_count_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats dc({field}) as value_count{fields} by _time{groupby}",
+        "streamstats": "| sort 0 _time\n| streamstats time_window={timespan} dc({field}) as value_count{fields}{groupby}",
     }
     temporal_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats dc(event_type) as event_type_count{fields} by _time{groupby}",
+        "streamstats": "| sort 0 _time\n| streamstats time_window={timespan} dc(event_type) as event_type_count{fields}{groupby}",
     }
     temporal_extended_aggregation_expression: ClassVar[Dict[str, str]] = {
         "stats": "| bin _time span={timespan}\n| stats values(event_type) as event_types{fields} by _time{groupby}",
+        "streamstats": "| sort 0 _time\n| streamstats time_window={timespan} values(event_type) as event_types{fields}{groupby}",
     }
 
-    correlation_fields_expression: ClassVar[Dict[str, str]] = {"stats": "{fields}"}
+    correlation_fields_expression: ClassVar[Dict[str, str]] = {
+        "stats": "{fields}",
+        "streamstats": "{fields}",
+    }
     correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
-        "stats": " values({field}) as {field}"
+        "stats": " values({field}) as {field}",
+        "streamstats": " values({field}) as {field}",
     }
     correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {
-        "stats": ""
+        "stats": "",
+        "streamstats": "",
     }
 
     timespan_mapping: ClassVar[Dict[str, str]] = {
         "M": "mon",
     }
 
-    groupby_expression: ClassVar[Dict[str, str]] = {"stats": " {fields}"}
-    groupby_field_expression: ClassVar[Dict[str, str]] = {"stats": "{field}"}
-    groupby_field_expression_joiner: ClassVar[Dict[str, str]] = {"stats": " "}
+    groupby_expression: ClassVar[Dict[str, str]] = {
+        "stats": " {fields}",
+        "streamstats": " by {fields}",
+    }
+    groupby_field_expression: ClassVar[Dict[str, str]] = {
+        "stats": "{field}",
+        "streamstats": "{field}",
+    }
+    groupby_field_expression_joiner: ClassVar[Dict[str, str]] = {
+        "stats": " ",
+        "streamstats": " ",
+    }
 
     event_count_condition_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| search event_count {op} {count}"
+        "stats": "| search event_count {op} {count}",
+        "streamstats": "| search event_count {op} {count}",
     }
     value_count_condition_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| search value_count {op} {count}"
+        "stats": "| search value_count {op} {count}",
+        "streamstats": "| search value_count {op} {count}",
     }
     temporal_condition_expression: ClassVar[Dict[str, str]] = {
-        "stats": "| search event_type_count {op} {count}"
+        "stats": "| search event_type_count {op} {count}",
+        "streamstats": "| search event_type_count {op} {count}",
     }
     temporal_extended_condition_expression: ClassVar[dict[str, str]] = {
-        "stats": "| search {extended_condition}"
+        "stats": "| search {extended_condition}",
+        "streamstats": "| search {extended_condition}",
     }
     
     extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
-        "stats": 'event_types="{ruleid}"'
+        "stats": 'event_types="{ruleid}"',
+        "streamstats": 'event_types="{ruleid}"',
     }
 
     # Splunk stats/tstats functions allowed in the `tstats_aggregations` data model setting.
