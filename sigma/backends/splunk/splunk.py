@@ -1,7 +1,8 @@
+import copy
 import hashlib
 import re
 from sigma.conversion.state import ConversionState
-from sigma.modifiers import SigmaRegularExpression
+from sigma.modifiers import SigmaRegularExpression, SigmaRegularExpressionFlag
 from sigma.correlations import (
     SigmaCorrelationRule,
     CorrelationConditionAND,
@@ -12,6 +13,7 @@ from sigma.conversion.base import TextQueryBackend, DeferredQueryExpression
 from sigma.conversion.deferred import DeferredTextQueryExpression
 from sigma.conditions import (
     ConditionFieldEqualsValueExpression,
+    ConditionValueExpression,
     ConditionOR,
     ConditionAND,
     ConditionNOT,
@@ -334,6 +336,67 @@ class SplunkBackend(TextQueryBackend):
         ):
             return False
         return super().compare_precedence(outer, inner)
+
+    @staticmethod
+    def _has_literal_asterisk(value) -> bool:
+        """
+        True if a Sigma string value contains an escaped (literal) asterisk.
+
+        The Splunk search command treats every asterisk as a wildcard and documents
+        that a backslash cannot escape it, so `"a\\*b"` matches `a*b`, `ab` and `aXYZb`
+        alike. Such values can only be matched exactly with a regular expression.
+        """
+        return isinstance(value, SigmaString) and any(
+            isinstance(part, str) and "*" in part for part in value.s
+        )
+
+    @staticmethod
+    def _literal_asterisk_regex(value: SigmaString, anchored: bool) -> SigmaRegularExpression:
+        """Case-insensitive regular expression equivalent to a Sigma string value."""
+        regex = value.to_regex().regexp
+        if anchored:
+            regex = f"^{regex}$"
+        regex = SigmaRegularExpression(regex)
+        regex.add_flag(SigmaRegularExpressionFlag.IGNORECASE)
+        return regex
+
+    def decide_convert_condition_as_in_expression(
+        self, cond: Union[ConditionOR, ConditionAND], state: ConversionState
+    ) -> bool:
+        if any(
+            isinstance(arg, ConditionFieldEqualsValueExpression)
+            and self._has_literal_asterisk(arg.value)
+            for arg in cond.args
+        ):
+            return False
+        return super().decide_convert_condition_as_in_expression(cond, state)
+
+    def convert_condition_field_eq_val_str(
+        self,
+        cond: ConditionFieldEqualsValueExpression,
+        state: "sigma.conversion.state.ConversionState",
+    ) -> Union[str, DeferredQueryExpression]:
+        """Match values with a literal asterisk with a regular expression (see _has_literal_asterisk)."""
+        if self._has_literal_asterisk(cond.value):
+            re_cond = copy.copy(cond)
+            re_cond.value = self._literal_asterisk_regex(cond.value, anchored=True)
+            return self.convert_condition_field_eq_val_re(re_cond, state)
+        return super().convert_condition_field_eq_val_str(cond, state)
+
+    def convert_condition_val_str(
+        self,
+        cond: ConditionValueExpression,
+        state: "sigma.conversion.state.ConversionState",
+    ) -> Union[str, DeferredQueryExpression]:
+        """Match keywords with a literal asterisk with a regular expression on _raw."""
+        if self._has_literal_asterisk(cond.value):
+            re_cond = ConditionFieldEqualsValueExpression(
+                SplunkDeferredRegularExpression.default_field,
+                self._literal_asterisk_regex(cond.value, anchored=False),
+            )
+            re_cond.parent = cond.parent
+            return self.convert_condition_field_eq_val_re(re_cond, state)
+        return super().convert_condition_val_str(cond, state)
 
     def convert_condition_field_eq_val_re(
         self,
