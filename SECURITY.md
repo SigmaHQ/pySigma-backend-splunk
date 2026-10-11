@@ -20,7 +20,7 @@ Please include:
 
 This backend turns Sigma rules, which are often third-party or community content, into Splunk SPL / SPL2 queries and related output formats that run in a detection platform. The following are in scope:
 
-- **Query or output injection:** rule content (values, field names, titles, descriptions, tags or other metadata) that can change the *structure* of a generated query or of any output format this backend produces, instead of being treated as data. For example, breaking out of a quoted value, adding commands, clauses or sub-searches, or altering the fields of a generated configuration or alert definition.
+- **Query or output injection:** rule content (values, field names, titles, descriptions, tags or other metadata) that can change the *structure* of a generated query or of any output format this backend produces, instead of being treated as data, resulting in code execution, file access, or other malicious outcomes. For example, breaking out of a quoted value to add commands, clauses or sub-searches that execute arbitrary code, or altering the fields of a generated configuration or alert definition in a way that enables exploitation.
 - **Code execution or file access:** converting a rule or loading a pipeline shipped with this backend that leads to code execution, unsafe deserialisation, template evaluation of untrusted input, or file access outside the intended location.
 - **Denial of service:** a small crafted rule that makes conversion consume excessive CPU or memory.
 - **Release and supply chain:** weaknesses in this repository's CI or release workflows that could let an outsider publish or alter a released package.
