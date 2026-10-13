@@ -1434,3 +1434,192 @@ detection:
     ):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
 
+
+# The Splunk search command treats every asterisk as a wildcard; a backslash does not
+# escape it. Values with a literal (escaped) asterisk are matched with a regex instead.
+
+
+def test_splunk_literal_asterisk_uses_regex(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                    fieldB: 'lit\*star'
+                condition: sel
+        """
+            )
+        )
+        == ['fieldA="valueA"\n| regex fieldB="(?i)^lit\\\\*star$"']
+    )
+
+
+def test_splunk_literal_asterisk_with_wildcards(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                    fieldB|contains: '/tn \*'
+                condition: sel
+        """
+            )
+        )
+        == ['fieldA="valueA"\n| regex fieldB="(?i)^.*/tn \\\\*.*$"']
+    )
+
+
+def test_splunk_literal_asterisk_with_backslashes(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                    ShareName: '\\\\\*\\IPC$'
+                condition: sel
+        """
+            )
+        )
+        == [
+            'fieldA="valueA"\n| regex ShareName="(?i)^\\\\\\\\\\\\\\\\\\\\*\\\\\\\\IPC\\\\$$"'
+        ]
+    )
+
+
+def test_splunk_literal_asterisk_not(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                filter:
+                    fieldB: 'lit\*star'
+                condition: sel and not filter
+        """
+            )
+        )
+        == ['fieldA="valueA"\n| regex fieldB!="(?i)^lit\\\\*star$"']
+    )
+
+
+def test_splunk_literal_asterisk_in_value_list(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                    fieldB:
+                        - 'lit\*star'
+                        - valueB
+                        - valueC
+                condition: sel
+        """
+            )
+        )
+        == [
+            'fieldA="valueA"\n'
+            '| rex field=fieldB "(?<fieldBMatch>(?i)^lit\\\\*star$)"\n'
+            '| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n'
+            '| search (fieldBCondition="true" OR fieldB="valueB" OR fieldB="valueC")'
+        ]
+    )
+
+
+def test_splunk_value_list_without_literal_asterisk_still_uses_in(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldB:
+                        - 'val*B'
+                        - valueC
+                condition: sel
+        """
+            )
+        )
+        == ['fieldB IN ("val*B", "valueC")']
+    )
+
+
+def test_splunk_literal_asterisk_keyword(splunk_backend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: valueA
+                keywords:
+                    - 'select \*'
+                condition: sel and keywords
+        """
+            )
+        )
+        == ['fieldA="valueA"\n| regex _raw="(?i)select \\\\*"']
+    )
+
+
+def test_splunk_data_model_literal_asterisk():
+    splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
+    rule = r"""
+title: Test
+status: test
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    sel:
+        ParentImage|endswith: explorer.exe
+        CommandLine|contains: '/tn \*'
+    condition: sel
+    """
+    result = splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
+    assert '| regex Processes.process="(?i)^.*/tn \\\\*.*$"' in result[0]
+    assert 'Processes.process="*/tn \\*' not in result[0]
