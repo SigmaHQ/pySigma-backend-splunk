@@ -425,3 +425,272 @@ correlation:
     assert " ".join(query.split()).endswith(
         '| search (event_types="base_rule_1" event_types="base_rule_2") OR event_types="base_rule_3"'
     )
+
+
+streamstats_base_rule = """
+title: Base rule 1
+name: base_rule_1
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+"""
+
+streamstats_base_rules = (
+    streamstats_base_rule
+    + """
+title: Base rule 2
+name: base_rule_2
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value3
+        fieldB: value4
+    condition: selection
+---
+"""
+)
+
+
+def test_correlation_methods_default_is_stats(splunk_backend):
+    assert splunk_backend.default_correlation_method == "stats"
+    assert set(splunk_backend.correlation_methods) == {"stats", "streamstats"}
+
+
+def test_event_count_correlation_rule_streamstats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        streamstats_base_rule
+        + """
+title: Multiple occurrences of base event
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule_1
+    group-by:
+        - fieldC
+        - fieldD
+    timespan: 15m
+    condition:
+        gte: 10
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """fieldA="value1" fieldB="value2"
+
+| sort 0 _time
+| streamstats time_window=15m count as event_count by fieldC fieldD
+
+| search event_count >= 10"""
+    ]
+
+
+def test_event_count_correlation_rule_streamstats_query_without_group_by(
+    splunk_backend,
+):
+    correlation_rule = SigmaCollection.from_yaml(
+        streamstats_base_rule
+        + """
+title: Multiple occurrences of base event
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule_1
+    timespan: 1h
+    condition:
+        gte: 10
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """fieldA="value1" fieldB="value2"
+
+| sort 0 _time
+| streamstats time_window=1h count as event_count
+
+| search event_count >= 10"""
+    ]
+
+
+def test_value_count_correlation_rule_streamstats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        streamstats_base_rule
+        + """
+title: Many distinct values
+status: test
+correlation:
+    type: value_count
+    rules:
+        - base_rule_1
+    group-by:
+        - fieldC
+    timespan: 15m
+    condition:
+        gte: 10
+        field: fieldD
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """fieldA="value1" fieldB="value2"
+
+| sort 0 _time
+| streamstats time_window=15m dc(fieldD) as value_count by fieldC
+
+| search value_count >= 10"""
+    ]
+
+
+def test_temporal_correlation_rule_streamstats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        streamstats_base_rules
+        + """
+title: Temporal correlation rule
+status: test
+correlation:
+    type: temporal
+    rules:
+        - base_rule_1
+        - base_rule_2
+    aliases:
+        field:
+            base_rule_1: fieldC
+            base_rule_2: fieldD
+    group-by:
+        - fieldC
+    timespan: 15m
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """| multisearch
+[ search fieldA="value1" fieldB="value2" | eval event_type="base_rule_1" | rename fieldC as field ]
+[ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" | rename fieldD as field ]
+
+| sort 0 _time
+| streamstats time_window=15m dc(event_type) as event_type_count by fieldC
+
+| search event_type_count >= 2"""
+    ]
+
+
+def test_temporal_extended_correlation_rule_streamstats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        streamstats_base_rules
+        + """
+title: Temporal correlation rule
+status: test
+correlation:
+    type: temporal
+    group-by:
+        - fieldC
+    condition: base_rule_1 and base_rule_2
+    timespan: 15m
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """| multisearch
+[ search fieldA="value1" fieldB="value2" | eval event_type="base_rule_1" ]
+[ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" ]
+
+| sort 0 _time
+| streamstats time_window=15m values(event_type) as event_types by fieldC
+
+| search event_types="base_rule_1"   event_types="base_rule_2\""""
+    ]
+
+
+def test_correlation_rule_subrule_fields_in_streamstats_output(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+    condition: selection
+fields:
+    - fieldA
+    - fieldB
+---
+title: Correlation
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+    timespan: 1M
+    condition:
+        gte: 10
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """fieldA="value1"
+
+| sort 0 _time
+| streamstats time_window=1mon count as event_count values(fieldA) as fieldA values(fieldB) as fieldB by fieldC
+
+| search event_count >= 10"""
+    ]
+
+
+def test_event_count_correlation_rule_with_regex_deferred_streamstats(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule
+name: base_rule
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB|re: value2
+    condition: selection
+---
+title: Multiple occurrences of base event
+status: test
+correlation:
+    type: event_count
+    rules:
+        - base_rule
+    group-by:
+        - fieldC
+    timespan: 15m
+    condition:
+        gte: 10
+"""
+    )
+    assert splunk_backend.convert(
+        correlation_rule, correlation_method="streamstats"
+    ) == [
+        """fieldA="value1"
+| regex fieldB="value2"
+
+| sort 0 _time
+| streamstats time_window=15m count as event_count by fieldC
+
+| search event_count >= 10"""
+    ]
