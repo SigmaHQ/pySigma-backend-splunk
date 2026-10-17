@@ -12,7 +12,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pysigma = "^2"
+pysigma = "^2.0.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.11"
