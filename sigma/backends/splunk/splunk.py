@@ -271,7 +271,7 @@ class SplunkBackend(TextQueryBackend):
     temporal_extended_condition_expression: ClassVar[dict[str, str]] = {
         "stats": "| search {extended_condition}"
     }
-    
+
     extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
         "stats": 'event_types="{ruleid}"'
     }
@@ -335,14 +335,51 @@ class SplunkBackend(TextQueryBackend):
             return False
         return super().compare_precedence(outer, inner)
 
+    @staticmethod
+    def _is_pipeline_filter(cond: ConditionFieldEqualsValueExpression) -> bool:
+        """
+        Return True if cond can be applied as its own pipeline command after the main search.
+
+        Consecutive pipeline commands are ANDed, and only a deferred expression that is the
+        direct operand of a NOT is negated. The condition qualifies only if it is negated
+        directly at most and every other enclosing operator is an AND.
+        """
+        chain = cond.parent_chain_condition_classes()
+        if chain and chain[0] is ConditionNOT:
+            chain = chain[1:]
+        return all(c is ConditionAND for c in chain)
+
+    def convert_condition_and(
+        self,
+        cond: ConditionAND,
+        state: "sigma.conversion.state.ConversionState",
+    ) -> Union[str, DeferredQueryExpression, None]:
+        deferred_count = len(state.deferred)
+        result = super().convert_condition_and(cond, state)
+        if (
+            result is None
+            and len(state.deferred) > deferred_count
+            and not cond.parent_chain_condition_classes()
+        ):
+            # Every operand of the top-level AND was moved to a pipeline command, so the
+            # main search has to match everything.
+            return self.deferred_only_query
+        return result
+
     def convert_condition_field_eq_val_re(
         self,
         cond: ConditionFieldEqualsValueExpression,
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredRegularExpression:
-        """Defer regular expression matching to pipelined regex command after main search expression."""
+        """
+        Defer regular expression matching to pipelined regex command after main search expression.
 
-        if cond.parent_condition_chain_contains(ConditionOR):
+        If the regular expression is part of an OR or of a negated group, a pipelined regex
+        command cannot express it. It is evaluated by rex and eval commands instead, and the
+        main search expression is applied afterwards with a search command.
+        """
+
+        if not self._is_pipeline_filter(cond):
             # adding the deferred to the state
             SplunkDeferredORRegularExpression(
                 state,
@@ -369,6 +406,11 @@ class SplunkBackend(TextQueryBackend):
         if cond.parent_condition_chain_contains(ConditionOR):
             raise SigmaFeatureNotSupportedByBackendError(
                 "ORing FieldRef matching is not yet supported by Splunk backend",
+                source=cond.source,
+            )
+        if not self._is_pipeline_filter(cond):
+            raise SigmaFeatureNotSupportedByBackendError(
+                "Negating a group with FieldRef matching is not yet supported by Splunk backend",
                 source=cond.source,
             )
         return SplunkDeferredFieldRefExpression(

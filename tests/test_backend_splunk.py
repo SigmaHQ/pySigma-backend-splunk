@@ -534,6 +534,81 @@ def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
     )
 
 
+def test_splunk_regex_query_and_only(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel1:
+                    fieldA|re: foo.*bar
+                sel2:
+                    fieldB|re: boo.*foo
+                condition: sel1 and not sel2
+        """
+            )
+        )
+        == ['*\n| regex fieldA="foo.*bar"\n| regex fieldB!="boo.*foo"']
+    )
+
+
+def test_splunk_regex_query_negated_and(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldC: bar
+                filter:
+                    fieldA|re: foo.*bar
+                    fieldB|re: boo.*foo
+                condition: sel and not filter
+        """
+            )
+        )
+        == [
+            'fieldC="bar"\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search NOT (fieldACondition="true" fieldBCondition="true")'
+        ]
+    )
+
+
+def test_splunk_regex_query_negated_and_with_string(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldC: bar
+                filter:
+                    fieldA|re: foo.*bar
+                    fieldB: foo
+                condition: sel and not filter
+        """
+            )
+        )
+        == [
+            'fieldC="bar"\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| search NOT (fieldACondition="true" fieldB="foo")'
+        ]
+    )
+
+
 def test_splunk_cidr_query(splunk_backend: SplunkBackend):
     assert (
         splunk_backend.convert(
@@ -623,6 +698,28 @@ def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
                         fieldB: foo
                         fieldC: bar
                     condition: sel
+            """
+            )
+        )
+
+
+def test_splunk_fieldref_negated_and(splunk_backend: SplunkBackend):
+    with pytest.raises(SigmaFeatureNotSupportedByBackendError, match="Negating a group"):
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldB: foo
+                    filter:
+                        fieldA|fieldref: fieldD
+                        fieldC: bar
+                    condition: sel and not filter
             """
             )
         )
