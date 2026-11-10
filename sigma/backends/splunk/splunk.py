@@ -29,6 +29,51 @@ from sigma.pipelines.splunk.splunk import (
 import sigma
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Set, Tuple, Union
 
+# Characters that must never appear in a field name that is interpolated into SPL. Field names
+# are emitted either unquoted or wrapped in quotes without escaping, so any of these would allow
+# rule content to terminate the enclosing syntax element and inject SPL (e.g. a pipe followed by
+# an arbitrary command) or break out of a savedsearches.conf line.
+_unsafe_identifier_re: Pattern = re.compile(r"[\"'`\\|\x00-\x1f\x7f]")
+# Field names used unquoted in deferred pipeline commands (regex, rex, where).
+_deferred_field_re: Pattern = re.compile(r"^[\w.\-]+$")
+# Field names that can be emitted unquoted in a `| table` command.
+_table_field_re: Pattern = re.compile(r"^[\w.*\-]+$")
+# Line breaks that end a savedsearches.conf line.
+_line_break_re: Pattern = re.compile(r"\r\n|\r|\n")
+
+
+def check_identifier(
+    name: Optional[str], kind: str = "field name", source: Any = None
+) -> Optional[str]:
+    """Reject identifiers that could break out of the SPL syntax element they are placed in."""
+    if name is not None and _unsafe_identifier_re.search(name):
+        raise SigmaFeatureNotSupportedByBackendError(
+            f"Splunk backend does not support {kind} {name!r}: it contains a quote, backslash, "
+            "backtick, pipe or control character",
+            source=source,
+        )
+    return name
+
+
+def check_deferred_field(name: Optional[str], source: Any = None) -> Optional[str]:
+    """Field names in deferred regex/rex/where commands are emitted unquoted."""
+    if name is not None and not _deferred_field_re.match(name):
+        raise SigmaFeatureNotSupportedByBackendError(
+            f"Splunk backend does not support field name {name!r} in regular expression or "
+            "field reference matching: only letters, digits, '_', '.' and '-' are allowed",
+            source=source,
+        )
+    return name
+
+
+def table_fields(fields: List[str], quote: str, source: Any = None) -> List[str]:
+    """Validate `fields:` of a rule and quote those that can't be emitted bare."""
+    result = []
+    for field in fields:
+        check_identifier(field, "table field", source)
+        result.append(field if _table_field_re.match(field) else quote + field + quote)
+    return result
+
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
     template = 'regex {field}{op}"{value}"'
@@ -315,9 +360,14 @@ class SplunkBackend(TextQueryBackend):
         output = ""
         for k, v in settings.items():
             output += f"\n{k} = " + " \\\n".join(
-                v.split("\n")
+                _line_break_re.split(v)
             )  # cannot use \ in f-strings
         return output
+
+    def escape_and_quote_field(self, field_name: str) -> str:
+        """Field names are quoted but not escaped: reject names that could break out of the quotes."""
+        check_identifier(field_name)
+        return super().escape_and_quote_field(field_name)
 
     def compare_precedence(self, outer, inner) -> bool:
         """
@@ -378,6 +428,7 @@ class SplunkBackend(TextQueryBackend):
         command cannot express it. It is evaluated by rex and eval commands instead, and the
         main search expression is applied afterwards with a search command.
         """
+        check_deferred_field(cond.field, cond.source)
 
         if not self._is_pipeline_filter(cond):
             # adding the deferred to the state
@@ -403,6 +454,8 @@ class SplunkBackend(TextQueryBackend):
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredFieldRefExpression:
         """Defer FieldRef matching to pipelined with `where` command after main search expression."""
+        check_deferred_field(cond.field, cond.source)
+        check_deferred_field(cond.value.field, cond.source)
         if cond.parent_condition_chain_contains(ConditionOR):
             raise SigmaFeatureNotSupportedByBackendError(
                 "ORing FieldRef matching is not yet supported by Splunk backend",
@@ -536,7 +589,11 @@ class SplunkBackend(TextQueryBackend):
                 )
 
         if isinstance(rule, SigmaRule) and rule.fields:
-            return query + " | table " + ",".join(rule.fields)
+            return (
+                query
+                + " | table "
+                + ",".join(table_fields(rule.fields, self.field_quote, rule.source))
+            )
         return query
 
     def finalize_query_savedsearches(
@@ -546,15 +603,17 @@ class SplunkBackend(TextQueryBackend):
         index: int,
         state: ConversionState,
     ) -> str:
-        clean_title = rule.title.translate(
-            {ord(c): None for c in "[]"}
-        )  # remove brackets from title
+        # remove brackets and line breaks from title: it becomes the stanza header
+        clean_title = " ".join(
+            _line_break_re.split(rule.title.translate({ord(c): None for c in "[]"}))
+        )
         query_settings = self.query_settings(rule)
         query_settings["description"] = (
             rule.description.strip() if rule.description else ""
         )
         query_settings["search"] = query + (
-            "\n| table " + ",".join(rule.fields)
+            "\n| table "
+            + ",".join(table_fields(rule.fields, self.field_quote, rule.source))
             if isinstance(rule, SigmaRule) and rule.fields
             else ""
         )
