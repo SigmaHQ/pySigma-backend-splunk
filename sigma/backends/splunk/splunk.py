@@ -359,8 +359,10 @@ class SplunkBackend(TextQueryBackend):
         """Format a settings dict into newline separated k=v string. Escape multi-line values."""
         output = ""
         for k, v in settings.items():
+            # Normalize CRLF to LF and strip bare CR so they don't become continuation lines
+            v = v.replace("\r\n", "\n").replace("\r", "")
             output += f"\n{k} = " + " \\\n".join(
-                _line_break_re.split(v)
+                v.split("\n")
             )  # cannot use \ in f-strings
         return output
 
