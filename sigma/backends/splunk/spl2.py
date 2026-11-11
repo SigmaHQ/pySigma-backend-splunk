@@ -12,6 +12,7 @@ from sigma.rule import SigmaRule
 from sigma.types import SigmaCompareExpression, SigmaString
 import sigma
 from typing import ClassVar, Dict, List, Optional, Pattern, Tuple, Union
+from sigma.backends.splunk.splunk import check_identifier, table_fields
 
 
 class SplunkSPL2Backend(TextQueryBackend):
@@ -120,16 +121,28 @@ class SplunkSPL2Backend(TextQueryBackend):
         )
         return f'_raw LIKE "%{converted}%"'
 
+    def escape_and_quote_field(self, field_name: str) -> str:
+        """Field names are quoted but not escaped: reject names that could break out of the quotes."""
+        check_identifier(field_name)
+        return super().escape_and_quote_field(field_name)
+
+    def _table_fields(self, rule: SigmaRule) -> str:
+        if not rule.fields:
+            return ""
+        return " | table " + ", ".join(
+            table_fields(rule.fields, self.field_quote, rule.source)
+        )
+
     def finalize_query_default(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> str:
-        table_fields = " | table " + ", ".join(rule.fields) if rule.fields else ""
+        table_fields = self._table_fields(rule)
         return query + table_fields
 
     def finalize_query_module(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
     ) -> str:
-        table_fields = " | table " + ", ".join(rule.fields) if rule.fields else ""
+        table_fields = self._table_fields(rule)
         return "$result = " + query + table_fields
 
     def finalize_output_module(self, queries: List[str]) -> List[str]:
