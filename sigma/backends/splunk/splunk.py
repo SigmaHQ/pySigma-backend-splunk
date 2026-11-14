@@ -27,7 +27,18 @@ from sigma.pipelines.splunk.splunk import (
     splunk_dns_cim_mapping,
 )
 import sigma
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Pattern,
+    Set,
+    Tuple,
+    Union,
+)
 
 # Characters that must never appear in a field name that is interpolated into SPL. Field names
 # are emitted either unquoted or wrapped in quotes without escaping, so any of these would allow
@@ -292,9 +303,7 @@ class SplunkBackend(TextQueryBackend):
     correlation_fields_field_expression: ClassVar[Dict[str, str]] = {
         "stats": " values({field}) as {field}"
     }
-    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {
-        "stats": ""
-    }
+    correlation_fields_field_expression_joiner: ClassVar[Dict[str, str]] = {"stats": ""}
 
     timespan_mapping: ClassVar[Dict[str, str]] = {
         "M": "mon",
@@ -317,15 +326,34 @@ class SplunkBackend(TextQueryBackend):
         "stats": "| search {extended_condition}"
     }
 
-    extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
-        "stats": 'event_types="{ruleid}"'
-    }
+    extended_correlation_condition_rule_reference_expression: ClassVar[
+        dict[str, str]
+    ] = {"stats": 'event_types="{ruleid}"'}
 
     # Splunk stats/tstats functions allowed in the `tstats_aggregations` data model setting.
     data_model_aggregation_functions: ClassVar[Set[str]] = {
-        "avg", "dc", "distinct_count", "earliest", "estdc", "first", "last",
-        "latest", "list", "max", "mean", "median", "min", "mode", "range",
-        "stdev", "stdevp", "sum", "sumsq", "values", "var", "varp",
+        "avg",
+        "dc",
+        "distinct_count",
+        "earliest",
+        "estdc",
+        "first",
+        "last",
+        "latest",
+        "list",
+        "max",
+        "mean",
+        "median",
+        "min",
+        "mode",
+        "range",
+        "stdev",
+        "stdevp",
+        "sum",
+        "sumsq",
+        "values",
+        "var",
+        "varp",
     }
     _data_model_identifier_re: ClassVar[Pattern] = re.compile(r"^[\w.]+$")
     _data_model_span_re: ClassVar[Pattern] = re.compile(
@@ -583,12 +611,7 @@ class SplunkBackend(TextQueryBackend):
             # expression stays intact in the trailing | search stage.
             if prefix_parts and not self._has_top_level_or(search_query):
                 prefix = " ".join(prefix_parts)
-                query = (
-                    prefix
-                    + deferred_part
-                    + search_marker
-                    + remaining_query
-                )
+                query = prefix + deferred_part + search_marker + remaining_query
 
         if isinstance(rule, SigmaRule) and rule.fields:
             return (
@@ -629,6 +652,70 @@ class SplunkBackend(TextQueryBackend):
             + "\n"
             + "\n".join(queries)
         )
+
+    def convert_correlation_temporal_ordered_rule(
+        self,
+        rule: SigmaCorrelationRule,
+        output_format: Optional[str] = None,
+        method: str = "default",
+    ) -> List[str]:
+        """Convert a temporal_ordered correlation rule.
+
+        Extends the temporal correlation by tracking the first occurrence time for each
+        referenced event type and verifying events happened in the declared sequence order.
+        """
+        if method not in self.default_correlation_query:
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Correlation method '{method}' is not supported by backend for "
+                "correlation type 'temporal_ordered'.",
+                source=rule.source,
+            )
+
+        rule_ids = [rr.rule.name or str(rr.rule.id) for rr in rule.referenced_rules]
+        for rid in rule_ids:
+            check_identifier(rid, "rule name", rule.source)
+
+        search = self.convert_correlation_search(rule)
+        timespan = self.convert_timespan(rule.timespan, method)
+        groupby = self.convert_correlation_aggregation_groupby_from_template(
+            rule.group_by, method
+        )
+        fields_expr = self.convert_correlation_aggregation_fields_from_template(
+            rule.fields, rule.referenced_rules, rule.group_by, method
+        )
+
+        # Generate per-rule first-occurrence stats. Field aliases use only word chars so
+        # they are safe as unquoted Splunk field names in | where expressions.
+        first_time_stats = "".join(
+            f' earliest(eval(if(event_type="{rid}",_time,null())))'
+            f" as first_{re.sub(r'[^\w]', '_', rid)}"
+            for rid in rule_ids
+        )
+
+        aggregate = (
+            f"| bin _time span={timespan}\n"
+            f"| stats dc(event_type) as event_type_count"
+            f"{fields_expr}{first_time_stats} by _time{groupby}"
+        )
+
+        cond_op = self.correlation_condition_mapping[rule.condition.op]
+        condition = f"| search event_type_count {cond_op} {rule.condition.count}"
+
+        if len(rule_ids) > 1:
+            safe_ids = [re.sub(r"[^\w]", "_", rid) for rid in rule_ids]
+            ordering = " AND ".join(
+                f"first_{safe_ids[i]} < first_{safe_ids[i + 1]}"
+                for i in range(len(safe_ids) - 1)
+            )
+            condition += f"\n| where {ordering}"
+
+        return [
+            self.default_correlation_query[method].format(
+                search=search,
+                aggregate=aggregate,
+                condition=condition,
+            )
+        ]
 
     def finalize_query_data_model(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
@@ -694,7 +781,9 @@ class SplunkBackend(TextQueryBackend):
             parts = data_model_set.split(".")
             if len(parts) != 2 or not all(parts):
                 raise SigmaFeatureNotSupportedByBackendError(
-                    "Expected format 'data_model.data_set', but got: {}".format(data_model_set)
+                    "Expected format 'data_model.data_set', but got: {}".format(
+                        data_model_set
+                    )
                 )
             data_set = parts[1]
 
