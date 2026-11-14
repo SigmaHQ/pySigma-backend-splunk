@@ -45,7 +45,10 @@ class SplunkSPL2Backend(TextQueryBackend):
     escape_char: ClassVar[str] = "\\"
     wildcard_multi: ClassVar[str] = "%"
     wildcard_single: ClassVar[str] = "_"
-    add_escaped: ClassVar[str] = "%_"
+    # The backslash is the SPL2 string escape character, so literal backslashes must
+    # be escaped too. Otherwise a value ending in a backslash escapes the closing quote
+    # (or a following quote-escape) and lets rule content change the query structure.
+    add_escaped: ClassVar[str] = "%_\\"
 
     wildcard_match_expression: ClassVar[str] = "{field} LIKE {value}"
 
