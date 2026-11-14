@@ -1,6 +1,7 @@
 from test_backend_splunk import splunk_backend
 from sigma.collection import SigmaCollection
 
+
 def test_event_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -38,6 +39,7 @@ correlation:
 | search event_count >= 10"""
     ]
 
+
 def test_value_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -74,6 +76,7 @@ correlation:
 
 | search value_count < 10"""
     ]
+
 
 def test_temporal_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
@@ -124,7 +127,9 @@ correlation:
 | bin _time span=15m
 | stats dc(event_type) as event_type_count by _time fieldC
 
-| search event_type_count >= 2"""]
+| search event_type_count >= 2"""
+    ]
+
 
 def test_temporal_extended_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
@@ -296,6 +301,7 @@ correlation:
 | search event_count >= 10"""
     ]
 
+
 def test_single_rule_correlation_with_regex_deferred(splunk_backend):
     """Test that deferred regex expressions are included in single-rule correlation queries."""
     correlation_rule = SigmaCollection.from_yaml(
@@ -333,6 +339,7 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
 
 def test_event_count_correlation_rule_with_regex_or_deferred(splunk_backend):
     """Test that deferred OR regex expressions (rex) are included in correlation sub-queries."""
@@ -389,6 +396,7 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
 
 def test_correlation_rule_subrule_fields_in_stats_output(splunk_backend):
     """Test that sub-rule fields are retained as values() aggregations."""

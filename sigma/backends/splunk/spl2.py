@@ -81,7 +81,7 @@ class SplunkSPL2Backend(TextQueryBackend):
 
     unbound_value_str_expression: ClassVar[str] = '_raw LIKE "%{value}%"'
     unbound_value_num_expression: ClassVar[str] = '_raw LIKE "%{value}%"'
-    unbound_value_re_expression: ClassVar[str] = 'match(_raw, /{value}/)'
+    unbound_value_re_expression: ClassVar[str] = "match(_raw, /{value}/)"
 
     deferred_start: ClassVar[str] = "\n| "
     deferred_separator: ClassVar[str] = "\n| "
