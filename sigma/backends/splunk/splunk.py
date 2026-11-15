@@ -686,10 +686,11 @@ class SplunkBackend(TextQueryBackend):
 
         # Generate per-rule first-occurrence stats. Field aliases use only word chars so
         # they are safe as unquoted Splunk field names in | where expressions.
+        safe_ids = [re.sub(r"[^\w]", "_", rid) for rid in rule_ids]     # TODO: in Python 3.11 f-strings can't contain a backslash. If this Python version is deprecated, the code can be simplified.
         first_time_stats = "".join(
             f' earliest(eval(if(event_type="{rid}",_time,null())))'
-            f" as first_{re.sub(r'[^\w]', '_', rid)}"
-            for rid in rule_ids
+            f" as first_{safe_id}"
+            for rid, safe_id in zip(rule_ids, safe_ids)
         )
 
         aggregate = (
@@ -702,7 +703,6 @@ class SplunkBackend(TextQueryBackend):
         condition = f"| search event_type_count {cond_op} {rule.condition.count}"
 
         if len(rule_ids) > 1:
-            safe_ids = [re.sub(r"[^\w]", "_", rid) for rid in rule_ids]
             ordering = " AND ".join(
                 f"first_{safe_ids[i]} < first_{safe_ids[i + 1]}"
                 for i in range(len(safe_ids) - 1)
