@@ -141,7 +141,9 @@ def test_spl2_in_expression_with_wildcards(spl2_backend: SplunkSPL2Backend):
         """
             )
         )
-        == ['FROM main WHERE fieldA="valueA" OR fieldA LIKE "valueB%" OR fieldA="valueC"']
+        == [
+            'FROM main WHERE fieldA="valueA" OR fieldA LIKE "valueB%" OR fieldA="valueC"'
+        ]
     )
 
 
@@ -181,9 +183,7 @@ def test_spl2_wildcard_match(spl2_backend: SplunkSPL2Backend):
                 condition: sel
         """
     )
-    assert spl2_backend.convert(rule) == [
-        'FROM main WHERE fieldA LIKE "val%ue"'
-    ]
+    assert spl2_backend.convert(rule) == ['FROM main WHERE fieldA LIKE "val%ue"']
 
 
 def test_spl2_startswith(spl2_backend: SplunkSPL2Backend):
@@ -200,9 +200,7 @@ def test_spl2_startswith(spl2_backend: SplunkSPL2Backend):
                 condition: sel
         """
     )
-    assert spl2_backend.convert(rule) == [
-        'FROM main WHERE fieldA LIKE "test%"'
-    ]
+    assert spl2_backend.convert(rule) == ['FROM main WHERE fieldA LIKE "test%"']
 
 
 def test_spl2_endswith(spl2_backend: SplunkSPL2Backend):
@@ -219,9 +217,7 @@ def test_spl2_endswith(spl2_backend: SplunkSPL2Backend):
                 condition: sel
         """
     )
-    assert spl2_backend.convert(rule) == [
-        'FROM main WHERE fieldA LIKE "%.exe"'
-    ]
+    assert spl2_backend.convert(rule) == ['FROM main WHERE fieldA LIKE "%.exe"']
 
 
 def test_spl2_contains(spl2_backend: SplunkSPL2Backend):
@@ -238,9 +234,7 @@ def test_spl2_contains(spl2_backend: SplunkSPL2Backend):
                 condition: sel
         """
     )
-    assert spl2_backend.convert(rule) == [
-        'FROM main WHERE fieldA LIKE "%test%"'
-    ]
+    assert spl2_backend.convert(rule) == ['FROM main WHERE fieldA LIKE "%test%"']
 
 
 def test_spl2_regex_query(spl2_backend: SplunkSPL2Backend):
@@ -260,7 +254,7 @@ def test_spl2_regex_query(spl2_backend: SplunkSPL2Backend):
         """
             )
         )
-        == ['FROM main WHERE match(fieldA, /(?i)foo.*bar/)']
+        == ["FROM main WHERE match(fieldA, /(?i)foo.*bar/)"]
     )
 
 
@@ -283,7 +277,9 @@ def test_spl2_regex_query_with_other_conditions(spl2_backend: SplunkSPL2Backend)
         """
             )
         )
-        == ['FROM main WHERE match(fieldA, /(?i)foo.*bar/) AND fieldB="foo" AND fieldC="bar"']
+        == [
+            'FROM main WHERE match(fieldA, /(?i)foo.*bar/) AND fieldB="foo" AND fieldC="bar"'
+        ]
     )
 
 
@@ -347,7 +343,7 @@ def test_spl2_exists(spl2_backend: SplunkSPL2Backend):
             """
             )
         )
-        == ['FROM main WHERE fieldA IS NOT NULL AND fieldB IS NULL']
+        == ["FROM main WHERE fieldA IS NOT NULL AND fieldB IS NULL"]
     )
 
 
@@ -369,7 +365,7 @@ def test_spl2_null_expression(spl2_backend: SplunkSPL2Backend):
             """
             )
         )
-        == ['FROM main WHERE fieldA IS NULL']
+        == ["FROM main WHERE fieldA IS NULL"]
     )
 
 
@@ -390,7 +386,7 @@ def test_spl2_compare_gt(spl2_backend: SplunkSPL2Backend):
         """
             )
         )
-        == ['FROM main WHERE fieldA>100']
+        == ["FROM main WHERE fieldA>100"]
     )
 
 
@@ -411,7 +407,7 @@ def test_spl2_compare_lt(spl2_backend: SplunkSPL2Backend):
         """
             )
         )
-        == ['FROM main WHERE fieldA<50']
+        == ["FROM main WHERE fieldA<50"]
     )
 
 
@@ -471,9 +467,7 @@ def test_spl2_custom_dataset():
                 condition: sel
         """
     )
-    assert backend.convert(rule) == [
-        'FROM myindex WHERE fieldA="valueA"'
-    ]
+    assert backend.convert(rule) == ['FROM myindex WHERE fieldA="valueA"']
 
 
 def test_spl2_wildcard_escaping_percent(spl2_backend: SplunkSPL2Backend):
@@ -532,8 +526,75 @@ def test_spl2_example_simple_rule(spl2_backend: SplunkSPL2Backend):
     )
     result = spl2_backend.convert(rule)
     assert result == [
-        'FROM main WHERE ParentImage LIKE "%\\httpd.exe" AND Image LIKE "%\\cmd.exe"'
+        'FROM main WHERE ParentImage LIKE "%\\\\httpd.exe" AND Image LIKE "%\\\\cmd.exe"'
     ]
+
+
+def test_spl2_backslash_escaping(spl2_backend: SplunkSPL2Backend):
+    """Literal backslashes must be escaped, including a trailing one."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldA: 'C:\Temp\'
+                    fieldB|endswith: 'Temp\'
+                    fieldC|contains: '\a.exe'
+                keywords:
+                    - 'Temp\'
+                condition: sel or keywords
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [
+        r'FROM main WHERE fieldA="C:\\Temp\\" AND fieldB LIKE "%Temp\\" AND '
+        r'fieldC LIKE "%\\a.exe%" OR _raw LIKE "%Temp\\%"'
+    ]
+
+
+def test_spl2_backslash_quote_cannot_break_out_of_string(
+    spl2_backend: SplunkSPL2Backend,
+):
+    """A backslash followed by a quote must not terminate the string literal."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    Image: 'x\" OR true //'
+                condition: sel
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [r'FROM main WHERE Image="x\\\" OR true //"']
+
+
+def test_spl2_backslash_before_next_value_in_or(spl2_backend: SplunkSPL2Backend):
+    """A trailing backslash must not swallow the closing quote of the next value."""
+    rule = SigmaCollection.from_yaml(
+        r"""
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    - fieldA: 'a\'
+                    - fieldB: ' OR true OR fieldB='
+                condition: sel
+        """
+    )
+    result = spl2_backend.convert(rule)
+    assert result == [r'FROM main WHERE fieldA="a\\" OR fieldB=" OR true OR fieldB="']
 
 
 def test_spl2_example_exists_check(spl2_backend: SplunkSPL2Backend):
@@ -556,13 +617,14 @@ def test_spl2_example_exists_check(spl2_backend: SplunkSPL2Backend):
     )
     result = spl2_backend.convert(rule)
     assert result == [
-        'FROM main WHERE EventID=4688 AND SubjectUserName IS NOT NULL AND NOT TargetUserName IS NULL'
+        "FROM main WHERE EventID=4688 AND SubjectUserName IS NOT NULL AND NOT TargetUserName IS NULL"
     ]
 
 
 def test_spl2_backend_registration():
     """Test that the backend is properly registered."""
     from sigma.backends.splunk import backends
+
     assert "splunk_spl2" in backends
     assert backends["splunk_spl2"] is SplunkSPL2Backend
 
@@ -608,7 +670,7 @@ def test_spl2_regex_no_double_flag(spl2_backend: SplunkSPL2Backend):
         )
     )
     # There should be exactly one (?i) flag, not two
-    assert result == ['FROM main WHERE match(fieldA, /(?i)foo.*bar/)']
+    assert result == ["FROM main WHERE match(fieldA, /(?i)foo.*bar/)"]
     assert "/(?i)(?i)" not in result[0]
 
 
@@ -642,6 +704,9 @@ def test_spl2_pipeline_allowed_backends():
         splunk_windows_sysmon_acceleration_keywords,
         splunk_cim_data_model,
     )
+
     assert "splunk_spl2" in splunk_windows_pipeline().allowed_backends
-    assert "splunk_spl2" in splunk_windows_sysmon_acceleration_keywords().allowed_backends
+    assert (
+        "splunk_spl2" in splunk_windows_sysmon_acceleration_keywords().allowed_backends
+    )
     assert "splunk_spl2" in splunk_cim_data_model().allowed_backends

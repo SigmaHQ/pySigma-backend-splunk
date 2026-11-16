@@ -27,7 +27,63 @@ from sigma.pipelines.splunk.splunk import (
     splunk_dns_cim_mapping,
 )
 import sigma
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Pattern, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Pattern,
+    Set,
+    Tuple,
+    Union,
+)
+
+# Characters that must never appear in a field name that is interpolated into SPL. Field names
+# are emitted either unquoted or wrapped in quotes without escaping, so any of these would allow
+# rule content to terminate the enclosing syntax element and inject SPL (e.g. a pipe followed by
+# an arbitrary command) or break out of a savedsearches.conf line.
+_unsafe_identifier_re: Pattern = re.compile(r"[\"'`\\|\x00-\x1f\x7f]")
+# Field names used unquoted in deferred pipeline commands (regex, rex, where).
+_deferred_field_re: Pattern = re.compile(r"^[\w.\-]+$")
+# Field names that can be emitted unquoted in a `| table` command.
+_table_field_re: Pattern = re.compile(r"^[\w.*\-]+$")
+# Line breaks that end a savedsearches.conf line.
+_line_break_re: Pattern = re.compile(r"\r\n|\r|\n")
+
+
+def check_identifier(
+    name: Optional[str], kind: str = "field name", source: Any = None
+) -> Optional[str]:
+    """Reject identifiers that could break out of the SPL syntax element they are placed in."""
+    if name is not None and _unsafe_identifier_re.search(name):
+        raise SigmaFeatureNotSupportedByBackendError(
+            f"Splunk backend does not support {kind} {name!r}: it contains a quote, backslash, "
+            "backtick, pipe or control character",
+            source=source,
+        )
+    return name
+
+
+def check_deferred_field(name: Optional[str], source: Any = None) -> Optional[str]:
+    """Field names in deferred regex/rex/where commands are emitted unquoted."""
+    if name is not None and not _deferred_field_re.match(name):
+        raise SigmaFeatureNotSupportedByBackendError(
+            f"Splunk backend does not support field name {name!r} in regular expression or "
+            "field reference matching: only letters, digits, '_', '.' and '-' are allowed",
+            source=source,
+        )
+    return name
+
+
+def table_fields(fields: List[str], quote: str, source: Any = None) -> List[str]:
+    """Validate `fields:` of a rule and quote those that can't be emitted bare."""
+    result = []
+    for field in fields:
+        check_identifier(field, "table field", source)
+        result.append(field if _table_field_re.match(field) else quote + field + quote)
+    return result
 
 
 class SplunkDeferredRegularExpression(DeferredTextQueryExpression):
@@ -303,7 +359,7 @@ class SplunkBackend(TextQueryBackend):
         "stats": "| search {extended_condition}",
         "streamstats": "| search {extended_condition}",
     }
-    
+
     extended_correlation_condition_rule_reference_expression: ClassVar[dict[str, str]] = {
         "stats": 'event_types="{ruleid}"',
         "streamstats": 'event_types="{ruleid}"',
@@ -311,9 +367,28 @@ class SplunkBackend(TextQueryBackend):
 
     # Splunk stats/tstats functions allowed in the `tstats_aggregations` data model setting.
     data_model_aggregation_functions: ClassVar[Set[str]] = {
-        "avg", "dc", "distinct_count", "earliest", "estdc", "first", "last",
-        "latest", "list", "max", "mean", "median", "min", "mode", "range",
-        "stdev", "stdevp", "sum", "sumsq", "values", "var", "varp",
+        "avg",
+        "dc",
+        "distinct_count",
+        "earliest",
+        "estdc",
+        "first",
+        "last",
+        "latest",
+        "list",
+        "max",
+        "mean",
+        "median",
+        "min",
+        "mode",
+        "range",
+        "stdev",
+        "stdevp",
+        "sum",
+        "sumsq",
+        "values",
+        "var",
+        "varp",
     }
     _data_model_identifier_re: ClassVar[Pattern] = re.compile(r"^[\w.]+$")
     _data_model_span_re: ClassVar[Pattern] = re.compile(
@@ -347,10 +422,17 @@ class SplunkBackend(TextQueryBackend):
         """Format a settings dict into newline separated k=v string. Escape multi-line values."""
         output = ""
         for k, v in settings.items():
+            # Normalize CRLF to LF and strip bare CR so they don't become continuation lines
+            v = v.replace("\r\n", "\n").replace("\r", "")
             output += f"\n{k} = " + " \\\n".join(
                 v.split("\n")
             )  # cannot use \ in f-strings
         return output
+
+    def escape_and_quote_field(self, field_name: str) -> str:
+        """Field names are quoted but not escaped: reject names that could break out of the quotes."""
+        check_identifier(field_name)
+        return super().escape_and_quote_field(field_name)
 
     def compare_precedence(self, outer, inner) -> bool:
         """
@@ -368,14 +450,52 @@ class SplunkBackend(TextQueryBackend):
             return False
         return super().compare_precedence(outer, inner)
 
+    @staticmethod
+    def _is_pipeline_filter(cond: ConditionFieldEqualsValueExpression) -> bool:
+        """
+        Return True if cond can be applied as its own pipeline command after the main search.
+
+        Consecutive pipeline commands are ANDed, and only a deferred expression that is the
+        direct operand of a NOT is negated. The condition qualifies only if it is negated
+        directly at most and every other enclosing operator is an AND.
+        """
+        chain = cond.parent_chain_condition_classes()
+        if chain and chain[0] is ConditionNOT:
+            chain = chain[1:]
+        return all(c is ConditionAND for c in chain)
+
+    def convert_condition_and(
+        self,
+        cond: ConditionAND,
+        state: "sigma.conversion.state.ConversionState",
+    ) -> Union[str, DeferredQueryExpression, None]:
+        deferred_count = len(state.deferred)
+        result = super().convert_condition_and(cond, state)
+        if (
+            result is None
+            and len(state.deferred) > deferred_count
+            and not cond.parent_chain_condition_classes()
+        ):
+            # Every operand of the top-level AND was moved to a pipeline command, so the
+            # main search has to match everything.
+            return self.deferred_only_query
+        return result
+
     def convert_condition_field_eq_val_re(
         self,
         cond: ConditionFieldEqualsValueExpression,
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredRegularExpression:
-        """Defer regular expression matching to pipelined regex command after main search expression."""
+        """
+        Defer regular expression matching to pipelined regex command after main search expression.
 
-        if cond.parent_condition_chain_contains(ConditionOR):
+        If the regular expression is part of an OR or of a negated group, a pipelined regex
+        command cannot express it. It is evaluated by rex and eval commands instead, and the
+        main search expression is applied afterwards with a search command.
+        """
+        check_deferred_field(cond.field, cond.source)
+
+        if not self._is_pipeline_filter(cond):
             # adding the deferred to the state
             SplunkDeferredORRegularExpression(
                 state,
@@ -399,9 +519,16 @@ class SplunkBackend(TextQueryBackend):
         state: "sigma.conversion.state.ConversionState",
     ) -> SplunkDeferredFieldRefExpression:
         """Defer FieldRef matching to pipelined with `where` command after main search expression."""
+        check_deferred_field(cond.field, cond.source)
+        check_deferred_field(cond.value.field, cond.source)
         if cond.parent_condition_chain_contains(ConditionOR):
             raise SigmaFeatureNotSupportedByBackendError(
                 "ORing FieldRef matching is not yet supported by Splunk backend",
+                source=cond.source,
+            )
+        if not self._is_pipeline_filter(cond):
+            raise SigmaFeatureNotSupportedByBackendError(
+                "Negating a group with FieldRef matching is not yet supported by Splunk backend",
                 source=cond.source,
             )
         return SplunkDeferredFieldRefExpression(
@@ -519,15 +646,14 @@ class SplunkBackend(TextQueryBackend):
             # expression stays intact in the trailing | search stage.
             if prefix_parts and not self._has_top_level_or(search_query):
                 prefix = " ".join(prefix_parts)
-                query = (
-                    prefix
-                    + deferred_part
-                    + search_marker
-                    + remaining_query
-                )
+                query = prefix + deferred_part + search_marker + remaining_query
 
         if isinstance(rule, SigmaRule) and rule.fields:
-            return query + " | table " + ",".join(rule.fields)
+            return (
+                query
+                + " | table "
+                + ",".join(table_fields(rule.fields, self.field_quote, rule.source))
+            )
         return query
 
     def finalize_query_savedsearches(
@@ -537,15 +663,17 @@ class SplunkBackend(TextQueryBackend):
         index: int,
         state: ConversionState,
     ) -> str:
-        clean_title = rule.title.translate(
-            {ord(c): None for c in "[]"}
-        )  # remove brackets from title
+        # remove brackets and line breaks from title: it becomes the stanza header
+        clean_title = " ".join(
+            _line_break_re.split(rule.title.translate({ord(c): None for c in "[]"}))
+        )
         query_settings = self.query_settings(rule)
         query_settings["description"] = (
             rule.description.strip() if rule.description else ""
         )
         query_settings["search"] = query + (
-            "\n| table " + ",".join(rule.fields)
+            "\n| table "
+            + ",".join(table_fields(rule.fields, self.field_quote, rule.source))
             if isinstance(rule, SigmaRule) and rule.fields
             else ""
         )
@@ -559,6 +687,70 @@ class SplunkBackend(TextQueryBackend):
             + "\n"
             + "\n".join(queries)
         )
+
+    def convert_correlation_temporal_ordered_rule(
+        self,
+        rule: SigmaCorrelationRule,
+        output_format: Optional[str] = None,
+        method: str = "default",
+    ) -> List[str]:
+        """Convert a temporal_ordered correlation rule.
+
+        Extends the temporal correlation by tracking the first occurrence time for each
+        referenced event type and verifying events happened in the declared sequence order.
+        """
+        if method not in self.default_correlation_query:
+            raise SigmaFeatureNotSupportedByBackendError(
+                f"Correlation method '{method}' is not supported by backend for "
+                "correlation type 'temporal_ordered'.",
+                source=rule.source,
+            )
+
+        rule_ids = [rr.rule.name or str(rr.rule.id) for rr in rule.referenced_rules]
+        for rid in rule_ids:
+            check_identifier(rid, "rule name", rule.source)
+
+        search = self.convert_correlation_search(rule)
+        timespan = self.convert_timespan(rule.timespan, method)
+        groupby = self.convert_correlation_aggregation_groupby_from_template(
+            rule.group_by, method
+        )
+        fields_expr = self.convert_correlation_aggregation_fields_from_template(
+            rule.fields, rule.referenced_rules, rule.group_by, method
+        )
+
+        # Generate per-rule first-occurrence stats. Field aliases use only word chars so
+        # they are safe as unquoted Splunk field names in | where expressions.
+        safe_ids = [re.sub(r"[^\w]", "_", rid) for rid in rule_ids]     # TODO: in Python 3.11 f-strings can't contain a backslash. If this Python version is deprecated, the code can be simplified.
+        first_time_stats = "".join(
+            f' earliest(eval(if(event_type="{rid}",_time,null())))'
+            f" as first_{safe_id}"
+            for rid, safe_id in zip(rule_ids, safe_ids)
+        )
+
+        aggregate = (
+            f"| bin _time span={timespan}\n"
+            f"| stats dc(event_type) as event_type_count"
+            f"{fields_expr}{first_time_stats} by _time{groupby}"
+        )
+
+        cond_op = self.correlation_condition_mapping[rule.condition.op]
+        condition = f"| search event_type_count {cond_op} {rule.condition.count}"
+
+        if len(rule_ids) > 1:
+            ordering = " AND ".join(
+                f"first_{safe_ids[i]} < first_{safe_ids[i + 1]}"
+                for i in range(len(safe_ids) - 1)
+            )
+            condition += f"\n| where {ordering}"
+
+        return [
+            self.default_correlation_query[method].format(
+                search=search,
+                aggregate=aggregate,
+                condition=condition,
+            )
+        ]
 
     def finalize_query_data_model(
         self, rule: SigmaRule, query: str, index: int, state: ConversionState
@@ -624,7 +816,9 @@ class SplunkBackend(TextQueryBackend):
             parts = data_model_set.split(".")
             if len(parts) != 2 or not all(parts):
                 raise SigmaFeatureNotSupportedByBackendError(
-                    "Expected format 'data_model.data_set', but got: {}".format(data_model_set)
+                    "Expected format 'data_model.data_set', but got: {}".format(
+                        data_model_set
+                    )
                 )
             data_set = parts[1]
 

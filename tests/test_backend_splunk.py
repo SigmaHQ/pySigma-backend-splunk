@@ -482,7 +482,9 @@ def test_splunk_regex_group_name_is_capped_for_long_fields():
 
     field_match = SplunkDeferredORRegularExpression.get_field_match(field)
 
-    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert (
+        len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    )
     assert field_match.endswith("Match")
 
 
@@ -496,8 +498,12 @@ def test_splunk_regex_group_name_stays_unique_when_truncated():
     field_match_1 = SplunkDeferredORRegularExpression.get_field_match(field_1)
     field_match_2 = SplunkDeferredORRegularExpression.get_field_match(field_2)
 
-    assert len(field_match_1) <= SplunkDeferredORRegularExpression.max_match_group_name_len
-    assert len(field_match_2) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert (
+        len(field_match_1) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    )
+    assert (
+        len(field_match_2) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    )
     assert field_match_1 != field_match_2
 
 
@@ -509,7 +515,9 @@ def test_splunk_regex_group_name_keeps_suffix_when_truncated():
 
     field_match = SplunkDeferredORRegularExpression.get_field_match(field)
 
-    assert len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    assert (
+        len(field_match) <= SplunkDeferredORRegularExpression.max_match_group_name_len
+    )
     assert field_match.endswith("Match2")
 
 
@@ -531,6 +539,81 @@ def test_splunk_single_regex_query(splunk_backend: SplunkBackend):
             )
         )
         == ['*\n| regex fieldA="foo.*bar"']
+    )
+
+
+def test_splunk_regex_query_and_only(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel1:
+                    fieldA|re: foo.*bar
+                sel2:
+                    fieldB|re: boo.*foo
+                condition: sel1 and not sel2
+        """
+            )
+        )
+        == ['*\n| regex fieldA="foo.*bar"\n| regex fieldB!="boo.*foo"']
+    )
+
+
+def test_splunk_regex_query_negated_and(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldC: bar
+                filter:
+                    fieldA|re: foo.*bar
+                    fieldB|re: boo.*foo
+                condition: sel and not filter
+        """
+            )
+        )
+        == [
+            'fieldC="bar"\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| rex field=fieldB "(?<fieldBMatch>boo.*foo)"\n| eval fieldBCondition=if(isnotnull(fieldBMatch), "true", "false")\n| search NOT (fieldACondition="true" fieldBCondition="true")'
+        ]
+    )
+
+
+def test_splunk_regex_query_negated_and_with_string(splunk_backend: SplunkBackend):
+    assert (
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+            title: Test
+            status: test
+            logsource:
+                category: test_category
+                product: test_product
+            detection:
+                sel:
+                    fieldC: bar
+                filter:
+                    fieldA|re: foo.*bar
+                    fieldB: foo
+                condition: sel and not filter
+        """
+            )
+        )
+        == [
+            'fieldC="bar"\n| rex field=fieldA "(?<fieldAMatch>foo.*bar)"\n| eval fieldACondition=if(isnotnull(fieldAMatch), "true", "false")\n| search NOT (fieldACondition="true" fieldB="foo")'
+        ]
     )
 
 
@@ -578,7 +661,9 @@ def test_splunk_cidr_or(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['(fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8") fieldB="foo" fieldC="bar"']
+        == [
+            '(fieldA="192.168.0.0/16" OR fieldA="10.0.0.0/8") fieldB="foo" fieldC="bar"'
+        ]
     )
 
 
@@ -627,6 +712,31 @@ def test_splunk_fieldref_or(splunk_backend: SplunkBackend):
             )
         )
 
+
+def test_splunk_fieldref_negated_and(splunk_backend: SplunkBackend):
+    with pytest.raises(
+        SigmaFeatureNotSupportedByBackendError, match="Negating a group"
+    ):
+        splunk_backend.convert(
+            SigmaCollection.from_yaml(
+                """
+                title: Test
+                status: test
+                logsource:
+                    category: test_category
+                    product: test_product
+                detection:
+                    sel:
+                        fieldB: foo
+                    filter:
+                        fieldA|fieldref: fieldD
+                        fieldC: bar
+                    condition: sel and not filter
+            """
+            )
+        )
+
+
 def test_splunk_exists(splunk_backend: SplunkBackend):
     assert (
         splunk_backend.convert(
@@ -645,7 +755,7 @@ def test_splunk_exists(splunk_backend: SplunkBackend):
             """
             )
         )
-        == ['fieldA=* NOT fieldB=*']
+        == ["fieldA=* NOT fieldB=*"]
     )
 
 
@@ -710,8 +820,7 @@ dispatch.earliest_time = -30d
 dispatch.latest_time = now
 
 [Test 1]
-description = this is a description \\
-across two lines
+description = this is a descriptionacross two lines
 search = fieldB="foo" fieldC="bar" \\
 | regex fieldA="foo.*bar" \\
 | table fieldA
@@ -766,8 +875,7 @@ custom.key = customvalue
 
 [Test 1]
 custom.query.key = Test 1
-description = this is a description \\
-across two lines
+description = this is a descriptionacross two lines
 search = fieldB="foo" fieldC="bar" \\
 | regex fieldA="foo.*bar" \\
 | table fieldA
@@ -982,6 +1090,7 @@ Processes.parent_process_path Processes.parent_process_guid Processes.parent_pro
         )
     ]
 
+
 def test_splunk_data_model_dns_query():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
     rule = """
@@ -1043,6 +1152,7 @@ by DNS.dest DNS.dest_port DNS.answer DNS.ttl DNS.record_type DNS.transaction_id 
             "\n", " "
         )
     ]
+
 
 def test_splunk_data_model_process_creation_with_regex():
     splunk_backend = SplunkBackend(processing_pipeline=splunk_cim_data_model())
@@ -1433,4 +1543,3 @@ detection:
         SigmaFeatureNotSupportedByBackendError, match="Invalid 'tstats_span'"
     ):
         splunk_backend.convert(SigmaCollection.from_yaml(rule), "data_model")
-

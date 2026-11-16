@@ -1,6 +1,7 @@
 from test_backend_splunk import splunk_backend
 from sigma.collection import SigmaCollection
 
+
 def test_event_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -38,6 +39,7 @@ correlation:
 | search event_count >= 10"""
     ]
 
+
 def test_value_count_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
         """
@@ -74,6 +76,7 @@ correlation:
 
 | search value_count < 10"""
     ]
+
 
 def test_temporal_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
@@ -124,7 +127,9 @@ correlation:
 | bin _time span=15m
 | stats dc(event_type) as event_type_count by _time fieldC
 
-| search event_type_count >= 2"""]
+| search event_type_count >= 2"""
+    ]
+
 
 def test_temporal_extended_correlation_rule_stats_query(splunk_backend):
     correlation_rule = SigmaCollection.from_yaml(
@@ -185,7 +190,63 @@ correlation:
 | bin _time span=15m
 | stats values(event_type) as event_types by _time fieldC
 
-| search event_types="base_rule_1"   event_types="base_rule_2"   NOT event_types="base_rule_3\""""]
+| search event_types="base_rule_1"   event_types="base_rule_2"   NOT event_types="base_rule_3\""""
+    ]
+
+
+def test_temporal_ordered_correlation_rule_stats_query(splunk_backend):
+    correlation_rule = SigmaCollection.from_yaml(
+        """
+title: Base rule 1
+name: base_rule_1
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value1
+        fieldB: value2
+    condition: selection
+---
+title: Base rule 2
+name: base_rule_2
+status: test
+logsource:
+    category: test
+detection:
+    selection:
+        fieldA: value3
+        fieldB: value4
+    condition: selection
+---
+title: Temporal ordered correlation rule
+status: test
+correlation:
+    type: temporal_ordered
+    rules:
+        - base_rule_1
+        - base_rule_2
+    aliases:
+        field:
+            base_rule_1: fieldC
+            base_rule_2: fieldD
+    group-by:
+        - fieldC
+    timespan: 15m
+            """
+    )
+    assert splunk_backend.convert(correlation_rule) == [
+        """| multisearch
+[ search fieldA="value1" fieldB="value2" | eval event_type="base_rule_1" | rename fieldC as field ]
+[ search fieldA="value3" fieldB="value4" | eval event_type="base_rule_2" | rename fieldD as field ]
+
+| bin _time span=15m
+| stats dc(event_type) as event_type_count earliest(eval(if(event_type="base_rule_1",_time,null()))) as first_base_rule_1 earliest(eval(if(event_type="base_rule_2",_time,null()))) as first_base_rule_2 by _time fieldC
+
+| search event_type_count >= 2
+| where first_base_rule_1 < first_base_rule_2"""
+    ]
+
 
 def test_event_count_correlation_rule_with_regex_deferred(splunk_backend):
     """Test that deferred regex expressions are included in correlation sub-queries."""
@@ -240,6 +301,7 @@ correlation:
 | search event_count >= 10"""
     ]
 
+
 def test_single_rule_correlation_with_regex_deferred(splunk_backend):
     """Test that deferred regex expressions are included in single-rule correlation queries."""
     correlation_rule = SigmaCollection.from_yaml(
@@ -277,6 +339,7 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
 
 def test_event_count_correlation_rule_with_regex_or_deferred(splunk_backend):
     """Test that deferred OR regex expressions (rex) are included in correlation sub-queries."""
@@ -333,6 +396,7 @@ correlation:
 
 | search event_count >= 10"""
     ]
+
 
 def test_correlation_rule_subrule_fields_in_stats_output(splunk_backend):
     """Test that sub-rule fields are retained as values() aggregations."""
