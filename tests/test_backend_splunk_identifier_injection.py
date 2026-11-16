@@ -80,7 +80,11 @@ def test_savedsearches_title_newline_does_not_inject_keys():
     assert not re.search(r"^action\.webhook", out, re.MULTILINE)
     assert not re.search(r"^cron_schedule", out, re.MULTILINE)
     # the whole title stays inside one stanza header line
-    headers = [line for line in out.splitlines() if line.startswith("[") and "Suspicious" in line]
+    headers = [
+        line
+        for line in out.splitlines()
+        if line.startswith("[") and "Suspicious" in line
+    ]
     assert len(headers) == 1 and headers[0].endswith("]")
 
 
