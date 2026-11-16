@@ -36,12 +36,12 @@ correlation:
     )
 
     assert splunk_backend.convert(collection) == [
-        '''fieldA="value1"
+        """fieldA="value1"
 
 | bin _time span=15m
 | stats count as event_count values(fieldA) as fieldA values(fieldB) as fieldB values(fieldC) as fieldC by _time fieldD
 
-| search event_count >= 10'''
+| search event_count >= 10"""
     ]
 
 
@@ -77,12 +77,12 @@ correlation:
     )
 
     assert splunk_backend.convert(collection) == [
-        '''fieldA="value1"
+        """fieldA="value1"
 
 | bin _time span=15m
 | stats dc(fieldD) as value_count values(fieldA) as fieldA values(fieldE) as fieldE by _time fieldC
 
-| search value_count >= 5'''
+| search value_count >= 5"""
     ]
 
 
@@ -129,12 +129,12 @@ correlation:
     )
 
     assert splunk_backend.convert(collection) == [
-        '''| multisearch
+        """| multisearch
 [ search fieldA="value1" | eval event_type="base_rule_1" ]
 [ search fieldB="value2" | eval event_type="base_rule_2" ]
 
 | bin _time span=15m
 | stats dc(event_type) as event_type_count values(fieldE) as fieldE values(fieldF) as fieldF by _time fieldC
 
-| search event_type_count >= 2'''
+| search event_type_count >= 2"""
     ]

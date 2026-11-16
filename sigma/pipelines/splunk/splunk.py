@@ -89,6 +89,7 @@ splunk_dns_cim_mapping = {
     "source.port": "DNS.src_port",
 }
 
+
 def splunk_windows_pipeline():
     return ProcessingPipeline(
         name="Splunk Windows log source conditions",
@@ -381,12 +382,8 @@ def splunk_cim_data_model():
                     RuleProcessingItemAppliedCondition(
                         "splunk_dm_mapping_sysmon_file_event"
                     ),
-                    RuleProcessingItemAppliedCondition(
-                        "splunk_dm_mapping_web_proxy"
-                    ),
-                    RuleProcessingItemAppliedCondition(
-                        "splunk_dm_mapping_dns"
-                    ),
+                    RuleProcessingItemAppliedCondition("splunk_dm_mapping_web_proxy"),
+                    RuleProcessingItemAppliedCondition("splunk_dm_mapping_dns"),
                 ],
             ),
         ],
